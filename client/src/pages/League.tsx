@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { POSITIONS, type Snapshot } from '../../../shared/types';
+import { POSITIONS, type Snapshot } from '@shared/types.ts';
 import { api } from '../api';
 import type { Update } from '../App';
 import { Chips, PageHead, POS_FILTER, PosBadge, Section, Table } from '../ui';
@@ -125,7 +125,7 @@ export function AlertsPage({ snap, update }: { snap: Snapshot; update: Update })
     <>
       <PageHead
         title="🔔 Drop Alerts"
-        sub="Top-ranked and watchlist players released since the previous refresh. The server re-checks on the auto-refresh interval set in Settings."
+        sub="Top-ranked and watchlist players released since the previous refresh. Checked automatically on the auto-refresh interval set in Settings."
       />
       <Section
         title={`${snap.alerts.length} alerts`}

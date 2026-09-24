@@ -1,0 +1,7 @@
+# Supabase project config used by the GitHub Actions deploy (supabase link / db push / functions deploy).
+project_id = "f2-command-center"
+
+[functions.api]
+# The function checks the signed-in user itself (see isOwner), and the scheduled job calls it
+# with a shared secret instead of a user token.
+verify_jwt = false

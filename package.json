@@ -1,11 +1,11 @@
 {
   "name": "f2-command-center",
   "version": "1.0.0",
-  "description": "Dynasty fantasy football command center: Sleeper, ESPN, MFL and FantasyPros in one app",
+  "description": "Dynasty fantasy football command center: Sleeper, ESPN, MFL and FantasyPros in one app (GitHub Pages + Supabase)",
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"tsx watch server/index.ts\" \"vite\"",
+    "dev": "vite",
     "build": "vite build",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -19,18 +19,15 @@
   },
   "homepage": "https://github.com/bport133/F2-Command-Center#readme",
   "dependencies": {
-    "express": "^4.22.3",
+    "@supabase/supabase-js": "^2.117.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tsx": "^4.23.15"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/express": "^4.17.25",
     "@types/node": "^26.6.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",
-    "concurrently": "^10.0.5",
     "typescript": "^7.0.2",
     "vite": "^5.4.21",
     "vitest": "^2.1.9"

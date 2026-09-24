@@ -7,10 +7,12 @@
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@shared/*": ["./supabase/functions/_shared/*"] }
   },
-  "include": ["server", "shared", "client/src", "test"]
+  "include": ["supabase/functions/_shared", "client/src", "test"]
 }

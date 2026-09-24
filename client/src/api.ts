@@ -1,13 +1,20 @@
-import type { PublicSettings, Settings, SecretKey, Snapshot } from '../../shared/types';
+import type { PublicSettings, Settings, SecretKey, Snapshot } from '@shared/types.ts';
+import { ANON, SUPABASE_URL, supabase } from './supabase';
 
 async function call<T>(method: string, path: string, body?: unknown, contentType = 'application/json'): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const { data: session } = await supabase.auth.getSession();
+  const token = session.session?.access_token;
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/api${path}`, {
     method,
-    headers: body === undefined ? {} : { 'content-type': contentType },
+    headers: {
+      apikey: ANON,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { 'content-type': contentType }),
+    },
     body: body === undefined ? undefined : contentType === 'application/json' ? JSON.stringify(body) : String(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
   return data as T;
 }
 

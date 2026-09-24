@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import type { Platform } from '../../shared/types';
+import type { Platform } from '@shared/types.ts';
 
 export interface Column<T> {
   key: string;

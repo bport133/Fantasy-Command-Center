@@ -1,0 +1,122 @@
+name: Test & deploy
+
+# Every push runs the tests. Pushes to the default branch (and manual runs) also:
+#   1. set up the Supabase database, 2. deploy the `api` Edge Function,
+#   3. build the site and publish it to GitHub Pages.
+# Needs four repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, SUPABASE_DB_PASSWORD, OWNER_EMAIL
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  supabase:
+    needs: test
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+      anon_key: ${{ steps.keys.outputs.anon_key }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
+    steps:
+      - name: Check secrets
+        id: check
+        run: |
+          missing=""
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD PROJECT_ID OWNER_EMAIL; do
+            [ -z "${!name}" ] && missing="$missing ${name/PROJECT_ID/SUPABASE_PROJECT_ID}"
+          done
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            msg="Missing repository secrets:$missing. Add them under Settings → Secrets and variables → Actions, then re-run this workflow."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "::error::$msg"; exit 1; fi
+            echo "::warning::Skipping deploy. $msg"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.ready == 'true'
+        with:
+          version: latest
+
+      - name: Link project
+        if: steps.check.outputs.ready == 'true'
+        run: supabase link --project-ref "$PROJECT_ID"
+
+      - name: Set up database
+        if: steps.check.outputs.ready == 'true'
+        run: supabase db push
+
+      - name: Deploy function
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          supabase secrets set --project-ref "$PROJECT_ID" OWNER_EMAIL="$OWNER_EMAIL"
+          supabase functions deploy api --project-ref "$PROJECT_ID" --no-verify-jwt
+
+      - name: Look up the public (anon) key for the website
+        id: keys
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          # Legacy "anon" key if the project has one, otherwise the newer publishable key. Both are
+          # meant to be public; the database table is locked down with row-level security.
+          key=$(supabase projects api-keys --project-ref "$PROJECT_ID" -o json \
+            | jq -r '([.[] | select(.name == "anon")] + [.[] | select(.type == "publishable")])[0].api_key')
+          if [ -z "$key" ] || [ "$key" = "null" ]; then echo "::error::Could not read the anon key"; exit 1; fi
+          echo "anon_key=$key" >> "$GITHUB_OUTPUT"
+
+  pages:
+    needs: supabase
+    if: needs.supabase.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build site
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ needs.supabase.outputs.anon_key }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deploy
+        uses: actions/deploy-pages@v4

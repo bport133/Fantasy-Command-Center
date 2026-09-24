@@ -1,9 +1,9 @@
 // ESPN Fantasy Football (unofficial v3 API). Private leagues need the espn_s2 and SWID
 // cookies from a logged-in browser session.
 
-import type { LeagueConfig, LeagueData, RosterPlayer, Slot, Team } from '../../shared/types.js';
-import { getJson } from '../http.js';
-import { normalizeName } from '../names.js';
+import type { LeagueConfig, LeagueData, RosterPlayer, Slot, Team } from '../types.ts';
+import { getJson } from '../http.ts';
+import { normalizeName } from '../names.ts';
 
 const POS: Record<number, string> = { 1: 'QB', 2: 'RB', 3: 'WR', 4: 'TE', 5: 'K', 16: 'DEF' };
 

@@ -1,12 +1,12 @@
 // Sleeper public API (no auth): https://docs.sleeper.com
 
-import type { DraftPick, LeagueConfig, LeagueData, PlayerInfo, RosterPlayer, Slot, Team } from '../../shared/types.js';
-import { getJson } from '../http.js';
-import { normalizeName } from '../names.js';
-import { readJson, writeJson } from '../store.js';
+import type { DraftPick, LeagueConfig, LeagueData, PlayerInfo, RosterPlayer, Slot, Team } from '../types.ts';
+import { getJson } from '../http.ts';
+import { normalizeName } from '../names.ts';
+import type { Store } from '../store.ts';
 
 const BASE = 'https://api.sleeper.app/v1';
-const PLAYER_CACHE = 'cache-sleeper-players.json';
+export const PLAYER_CACHE = 'cache:sleeper-players';
 const PLAYER_CACHE_MS = 24 * 60 * 60 * 1000;
 const FANTASY_POS = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DEF']);
 
@@ -19,14 +19,14 @@ export interface SleeperPlayer {
   yearsExp?: number;
 }
 
-type PlayerDb = Record<string, SleeperPlayer>;
+export type PlayerDb = Record<string, SleeperPlayer>;
 
 /**
  * The full Sleeper player database (~5 MB). Sleeper asks callers to fetch it at most once a
- * day, so it is cached on disk. It doubles as the age/experience source for every platform.
+ * day, so it is cached in the database. It doubles as the age/experience source for every platform.
  */
-export async function loadSleeperPlayers(fetchJson = getJson): Promise<PlayerDb> {
-  const cached = readJson<{ at: number; players: PlayerDb } | null>(PLAYER_CACHE, null);
+export async function loadSleeperPlayers(store: Store, fetchJson = getJson): Promise<PlayerDb> {
+  const cached = await store.get<{ at: number; players: PlayerDb } | null>(PLAYER_CACHE, null);
   if (cached && Date.now() - cached.at < PLAYER_CACHE_MS) return cached.players;
   try {
     const raw = await fetchJson<Record<string, any>>(`${BASE}/players/nfl`, {
@@ -34,7 +34,7 @@ export async function loadSleeperPlayers(fetchJson = getJson): Promise<PlayerDb>
       timeoutMs: 90000,
     });
     const players = trimPlayerDb(raw);
-    writeJson(PLAYER_CACHE, { at: Date.now(), players });
+    await store.set(PLAYER_CACHE, { at: Date.now(), players });
     return players;
   } catch (err) {
     if (cached) return cached.players; // stale beats nothing

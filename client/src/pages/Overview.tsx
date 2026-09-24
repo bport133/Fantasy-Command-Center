@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { EnrichedPlayer, FreeAgentRow, Snapshot } from '../../../shared/types';
+import type { EnrichedPlayer, FreeAgentRow, Snapshot } from '@shared/types.ts';
 import { api } from '../api';
 import type { Update } from '../App';
 import { Chips, fmt, money, PageHead, PlatformBadge, POS_FILTER, PosBadge, Section, Table, type Column } from '../ui';

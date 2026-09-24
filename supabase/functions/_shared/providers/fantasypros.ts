@@ -1,8 +1,8 @@
 // FantasyPros consensus rankings: the API (needs a key) or a CSV exported from the site.
 
-import type { FPPlayer } from '../../shared/types.js';
-import { getJson } from '../http.js';
-import { basePosition, normalizeName } from '../names.js';
+import type { FPPlayer } from '../types.ts';
+import { getJson } from '../http.ts';
+import { basePosition, normalizeName } from '../names.ts';
 
 const FANTASY_POS = new Set(['QB', 'RB', 'WR', 'TE']);
 

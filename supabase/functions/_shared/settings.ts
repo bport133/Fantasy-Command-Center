@@ -1,32 +1,12 @@
-// JSON-file persistence under DATA_DIR (default ./data, which is gitignored).
-// Settings with credentials, caches, watchlist, roster snapshots and alerts all live here.
+// Settings defaults, merging updates from the browser, and hiding secrets from it.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import {
   SECRET_KEYS,
   type PublicSettings,
   type SecretKey,
   type Settings,
-} from '../shared/types.js';
-
-export const DATA_DIR = resolve(process.env.DATA_DIR ?? 'data');
-
-export function readJson<T>(file: string, fallback: T): T {
-  try {
-    return JSON.parse(readFileSync(join(DATA_DIR, file), 'utf8')) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-export function writeJson(file: string, value: unknown): void {
-  mkdirSync(DATA_DIR, { recursive: true });
-  const path = join(DATA_DIR, file);
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
-  renameSync(tmp, path);
-}
+} from './types.ts';
+import type { Store } from './store.ts';
 
 export const DEFAULT_SETTINGS: Settings = {
   season: new Date().getMonth() < 2 ? new Date().getFullYear() - 1 : new Date().getFullYear(),
@@ -46,8 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
   fpScoring: 'PPR',
 };
 
-export function loadSettings(): Settings {
-  return { ...DEFAULT_SETTINGS, ...readJson<Partial<Settings>>('settings.json', {}) };
+export async function loadSettings(store: Store): Promise<Settings> {
+  return { ...DEFAULT_SETTINGS, ...(await store.get<Partial<Settings>>('settings', {})) };
 }
 
 export function publicSettings(s: Settings): PublicSettings {

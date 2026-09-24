@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FPPlayer, LeagueData, Settings } from '../shared/types';
+import type { FPPlayer, LeagueData, Settings } from '../supabase/functions/_shared/types.ts';
 import {
   detectDrops,
   draftPicks,
@@ -11,13 +11,13 @@ import {
   rosterState,
   teamValues,
   tradeFinder,
-} from '../server/analysis';
-import { dynastyValue, normalizeName } from '../server/names';
-import { cleanSwid, parseEspnLeague } from '../server/providers/espn';
-import { parseFantasyProsApi, parseFantasyProsCsv } from '../server/providers/fantasypros';
-import { parseMflLeague } from '../server/providers/mfl';
-import { parseSleeperLeague } from '../server/providers/sleeper';
-import { DEFAULT_SETTINGS, mergeSettings, publicSettings } from '../server/store';
+} from '../supabase/functions/_shared/analysis.ts';
+import { dynastyValue, normalizeName } from '../supabase/functions/_shared/names.ts';
+import { cleanSwid, parseEspnLeague } from '../supabase/functions/_shared/providers/espn.ts';
+import { parseFantasyProsApi, parseFantasyProsCsv } from '../supabase/functions/_shared/providers/fantasypros.ts';
+import { parseMflLeague } from '../supabase/functions/_shared/providers/mfl.ts';
+import { parseSleeperLeague } from '../supabase/functions/_shared/providers/sleeper.ts';
+import { DEFAULT_SETTINGS, mergeSettings, publicSettings } from '../supabase/functions/_shared/settings.ts';
 
 const fp = (rank: number, name: string, pos: string, tier = 1): FPPlayer => ({
   rank,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CapYear, ContractRow, Snapshot } from '../../../shared/types';
+import type { CapYear, ContractRow, Snapshot } from '@shared/types.ts';
 import { Chips, fmt, money, PageHead, pct, PosBadge, Section, Table, type Column } from '../ui';
 
 function NoMfl() {

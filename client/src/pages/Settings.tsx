@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { LeagueConfig, Platform, PublicSettings, SecretKey, Settings, Snapshot } from '../../../shared/types';
+import type { LeagueConfig, Platform, PublicSettings, SecretKey, Settings, Snapshot } from '@shared/types.ts';
 import { api } from '../api';
 import type { Update } from '../App';
 import { PageHead, Section } from '../ui';
@@ -76,7 +76,7 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
 
   return (
     <>
-      <PageHead title="⚙️ Settings" sub="Stored on this machine only (the data/ folder). Keys and cookies are never sent back to the browser." />
+      <PageHead title="⚙️ Settings" sub="Stored in your private Supabase database. Keys and cookies are never sent back to the browser." />
 
       <Section
         title="Leagues"
@@ -177,7 +177,7 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
           <NumField label="Season" help="NFL season to pull" value={draft.season} onChange={(v) => set('season', v)} />
           <NumField label="Free agents shown per league" value={draft.freeAgentsPerLeague} onChange={(v) => set('freeAgentsPerLeague', v)} />
           <NumField label="Alert on drops of top-N ranked players" help="Watchlist players are always tracked" value={draft.alertTopN} onChange={(v) => set('alertTopN', v)} />
-          <NumField label="Auto-refresh every (minutes)" help="0 turns it off. Runs while the server is up." value={draft.autoRefreshMinutes} onChange={(v) => set('autoRefreshMinutes', v)} />
+          <NumField label="Auto-refresh every (minutes)" help="Runs in the cloud around the clock (checked every 15 minutes). 0 turns it off." value={draft.autoRefreshMinutes} onChange={(v) => set('autoRefreshMinutes', v)} />
           {secret('alertWebhookUrl', 'Alert webhook URL', 'Optional Discord or Slack incoming-webhook URL to get drop alerts on your phone.')}
         </Section>
       </div>

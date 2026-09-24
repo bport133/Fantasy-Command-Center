@@ -1,6 +1,6 @@
 // Pulls every source, runs the analysis and stores the resulting snapshot.
 
-import type { Alert, FPPlayer, LeagueData, PlayerInfo, Snapshot, SourceStatus } from '../shared/types.js';
+import type { Alert, FPPlayer, LeagueData, PlayerInfo, Settings, Snapshot, SourceStatus } from './types.ts';
 import {
   detectDrops,
   draftPicks,
@@ -15,13 +15,14 @@ import {
   tradeFinder,
   watchRows,
   type RosterState,
-} from './analysis.js';
-import { dynastyValue } from './names.js';
-import { fetchEspnLeague } from './providers/espn.js';
-import { fetchFantasyProsRankings } from './providers/fantasypros.js';
-import { fetchMflLeague } from './providers/mfl.js';
-import { fetchSleeperLeague, loadSleeperPlayers, playerInfoIndex } from './providers/sleeper.js';
-import { loadSettings, readJson, writeJson } from './store.js';
+} from './analysis.ts';
+import { dynastyValue } from './names.ts';
+import { fetchEspnLeague } from './providers/espn.ts';
+import { fetchFantasyProsRankings } from './providers/fantasypros.ts';
+import { fetchMflLeague } from './providers/mfl.ts';
+import { fetchSleeperLeague, loadSleeperPlayers, PLAYER_CACHE, playerInfoIndex, type PlayerDb } from './providers/sleeper.ts';
+import { loadSettings } from './settings.ts';
+import type { Store } from './store.ts';
 
 const MAX_ALERTS = 500;
 
@@ -43,31 +44,37 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   teamChoices: {},
 };
 
-export const loadWatchlist = () => readJson<string[]>('watchlist.json', []);
-export const saveWatchlist = (names: string[]) =>
-  writeJson('watchlist.json', [...new Set(names.map((n) => n.trim()).filter(Boolean))]);
-export const loadRankings = () => readJson<{ source: string; at: string; players: FPPlayer[] } | null>('rankings.json', null);
-export const saveRankings = (source: string, players: FPPlayer[]) =>
-  writeJson('rankings.json', { source, at: new Date().toISOString(), players });
+type Rankings = { source: string; at: string; players: FPPlayer[] };
 
-const loadLeagueCache = () => readJson<Record<string, LeagueData>>('leagues.json', {});
+export const loadWatchlist = (store: Store) => store.get<string[]>('watchlist', []);
+export const saveWatchlist = (store: Store, names: string[]) =>
+  store.set('watchlist', [...new Set(names.map((n) => n.trim()).filter(Boolean))]);
+export const loadRankings = (store: Store) => store.get<Rankings | null>('rankings', null);
+export const saveRankings = (store: Store, source: string, players: FPPlayer[]) =>
+  store.set('rankings', { source, at: new Date().toISOString(), players });
 
-let running: Promise<Snapshot> | null = null;
-
-/** Runs a refresh, or joins the one already in flight. */
-export function refresh(opts: { fetchRemote?: boolean } = {}): Promise<Snapshot> {
-  running ??= doRefresh(opts.fetchRemote ?? true).finally(() => (running = null));
-  return running;
+/** True when the scheduled job should run a refresh now. */
+export async function refreshDue(store: Store, now = Date.now()): Promise<boolean> {
+  const settings = await loadSettings(store);
+  if (settings.autoRefreshMinutes <= 0 || settings.leagues.length === 0) return false;
+  const last = (await store.get<Snapshot>('snapshot', EMPTY_SNAPSHOT)).refreshedAt;
+  // Small slack so an hourly setting isn't skipped when the cron tick lands a few seconds early.
+  return !last || now - Date.parse(last) >= settings.autoRefreshMinutes * 60000 - 120000;
 }
 
-async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
-  const settings = loadSettings();
+/**
+ * fetchRemote=false recomputes the snapshot from cached league data (after a settings,
+ * watchlist or rankings change) without calling any external API.
+ */
+export async function refresh(store: Store, opts: { fetchRemote?: boolean } = {}): Promise<Snapshot> {
+  const fetchRemote = opts.fetchRemote ?? true;
+  const settings = await loadSettings(store);
   const sources: SourceStatus[] = [];
   const errors = new Map<string, string>();
-  const leagueCache = loadLeagueCache();
+  const leagueCache = await store.get<Record<string, LeagueData>>('leagues', {});
 
   // Rankings: API when a key is set, otherwise the last CSV import.
-  let rankings = loadRankings();
+  let rankings = await loadRankings(store);
   if (fetchRemote && settings.fpApiKey) {
     try {
       const players = await fetchFantasyProsRankings({
@@ -76,8 +83,9 @@ async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
         type: settings.fpType,
         scoring: settings.fpScoring,
       });
-      saveRankings(`FantasyPros API (${settings.fpType}, ${settings.fpScoring})`, players);
-      rankings = loadRankings();
+      const source = `FantasyPros API (${settings.fpType}, ${settings.fpScoring})`;
+      await saveRankings(store, source, players);
+      rankings = { source, at: new Date().toISOString(), players };
       sources.push({ source: 'FantasyPros', ok: true, message: `Synced ${players.length} players (${settings.fpType}, ${settings.fpScoring})` });
     } catch (err) {
       sources.push({ source: 'FantasyPros', ok: false, message: `${(err as Error).message}${rankings ? ' — using last saved rankings' : ''}` });
@@ -90,18 +98,17 @@ async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
   const fp = rankings?.players ?? [];
 
   // Sleeper player DB supplies ages/experience for every platform and names for Sleeper rosters.
-  let sleeperDb: Awaited<ReturnType<typeof loadSleeperPlayers>> = {};
+  let sleeperDb: PlayerDb = {};
   let info = new Map<string, PlayerInfo>();
-  const needsDb = fetchRemote && settings.leagues.length > 0;
-  if (needsDb) {
+  if (fetchRemote && settings.leagues.length > 0) {
     try {
-      sleeperDb = await loadSleeperPlayers();
+      sleeperDb = await loadSleeperPlayers(store);
       info = playerInfoIndex(sleeperDb);
     } catch (err) {
       sources.push({ source: 'Sleeper players', ok: false, message: (err as Error).message });
     }
   } else {
-    const cached = readJson<{ players: typeof sleeperDb } | null>('cache-sleeper-players.json', null);
+    const cached = await store.get<{ players: PlayerDb } | null>(PLAYER_CACHE, null);
     if (cached) info = playerInfoIndex(cached.players);
   }
 
@@ -118,15 +125,7 @@ async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
         return;
       }
       try {
-        let data: LeagueData;
-        if (cfg.platform === 'sleeper') {
-          if (!Object.keys(sleeperDb).length) throw new Error('Sleeper player database unavailable');
-          data = await fetchSleeperLeague(cfg, settings.season, sleeperDb);
-        } else if (cfg.platform === 'espn') {
-          data = await fetchEspnLeague(cfg, settings.season, settings);
-        } else {
-          data = await fetchMflLeague(cfg, settings.season, settings.mflApiKey);
-        }
+        const data = await fetchLeague(cfg, settings, sleeperDb, store);
         leagues.push(data);
         leagueCache[cfg.id] = data;
         sources.push({ source: data.name, ok: true, message: `${label}: ${data.teams.length} teams` });
@@ -139,35 +138,37 @@ async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
     }),
   );
   // Keep the configured order.
-  leagues.sort(
-    (a, b) =>
-      settings.leagues.findIndex((l) => l.id === a.configId) - settings.leagues.findIndex((l) => l.id === b.configId),
-  );
+  const order = (id: string) => settings.leagues.findIndex((l) => l.id === id);
+  leagues.sort((a, b) => order(a.configId) - order(b.configId));
   const configured = new Set(settings.leagues.map((l) => l.id));
-  writeJson('leagues.json', Object.fromEntries(Object.entries(leagueCache).filter(([id]) => configured.has(id))));
+  if (fetchRemote) {
+    await store.set('leagues', Object.fromEntries(Object.entries(leagueCache).filter(([id]) => configured.has(id))));
+  }
 
-  const watchlist = loadWatchlist();
+  const watchlist = await loadWatchlist(store);
   const ctx = makeContext(settings, fp, info, watchlist);
 
   // Drop alerts: compare against the previous roster snapshot for leagues fetched live this run.
-  let alerts = readJson<Alert[]>('alerts.json', []);
+  let alerts = await store.get<Alert[]>('alerts', []);
   if (fetchRemote) {
     const live = leagues.filter((l) => !errors.has(l.configId));
-    const prev = readJson<RosterState>('roster-state.json', {});
+    const prev = await store.get<RosterState>('roster-state', {});
     const fresh = fp.length ? detectDrops(ctx, prev, live, new Date()) : [];
     if (fresh.length) {
       alerts = [...fresh, ...alerts].slice(0, MAX_ALERTS);
-      writeJson('alerts.json', alerts);
+      await store.set('alerts', alerts);
       await notify(settings.alertWebhookUrl, fresh).catch((err) =>
         sources.push({ source: 'Alert webhook', ok: false, message: (err as Error).message }),
       );
     }
-    writeJson('roster-state.json', { ...prev, ...rosterState(live) });
+    await store.set('roster-state', { ...prev, ...rosterState(live) });
   }
 
+  const previous = await store.get<Snapshot>('snapshot', EMPTY_SNAPSHOT);
   const snapshot: Snapshot = {
-    refreshedAt: new Date().toISOString(),
-    sources,
+    refreshedAt: fetchRemote ? new Date().toISOString() : previous.refreshedAt,
+    // A local recompute keeps the last live run's source statuses, refreshing the rankings line.
+    sources: fetchRemote ? sources : [...sources.slice(0, 1), ...previous.sources.filter((s) => s.source !== 'FantasyPros')],
     fpCount: fp.length,
     leagues: leagueSummaries(ctx, leagues, errors),
     rosters: rosterGroups(ctx, leagues),
@@ -181,12 +182,26 @@ async function doRefresh(fetchRemote: boolean): Promise<Snapshot> {
     alerts,
     rankings: fp.map((p) => ({ ...p, age: info.get(p.key)?.age ?? p.age, value: dynastyValue(p.rank) })),
     teamChoices: Object.fromEntries(
-      leagues.map((l) => [l.configId, l.teams.map((t) => ({ id: t.id, name: t.owner && t.owner !== t.name ? `${t.name} (${t.owner})` : t.name }))]),
+      leagues.map((l) => [
+        l.configId,
+        l.teams.map((t) => ({ id: t.id, name: t.owner && t.owner !== t.name ? `${t.name} (${t.owner})` : t.name })),
+      ]),
     ),
   };
-  if (!fetchRemote) snapshot.refreshedAt = readJson<Snapshot>('snapshot.json', EMPTY_SNAPSHOT).refreshedAt;
-  writeJson('snapshot.json', snapshot);
+  await store.set('snapshot', snapshot);
   return snapshot;
+}
+
+function fetchLeague(cfg: Settings['leagues'][number], settings: Settings, sleeperDb: PlayerDb, store: Store) {
+  switch (cfg.platform) {
+    case 'sleeper':
+      if (!Object.keys(sleeperDb).length) throw new Error('Sleeper player database unavailable');
+      return fetchSleeperLeague(cfg, settings.season, sleeperDb);
+    case 'espn':
+      return fetchEspnLeague(cfg, settings.season, settings);
+    case 'mfl':
+      return fetchMflLeague(cfg, settings.season, settings.mflApiKey, store);
+  }
 }
 
 /** Posts new drop alerts to a Discord or Slack incoming webhook. */

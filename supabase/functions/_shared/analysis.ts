@@ -25,8 +25,8 @@ import {
   type TradeFinderLeague,
   type TradeTarget,
   type WatchRow,
-} from '../shared/types.js';
-import { dynastyValue, normalizeName } from './names.js';
+} from './types.ts';
+import { dynastyValue, normalizeName } from './names.ts';
 
 export interface Context {
   settings: Settings;

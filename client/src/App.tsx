@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { Snapshot } from '../../shared/types';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import type { Snapshot } from '@shared/types.ts';
 import { api } from './api';
 import { AlertsPage, DraftPicksPage, RankingsPage, TeamValuesPage, TradeFinderPage } from './pages/League';
 import { MflCapPage, MflExpiringPage } from './pages/Mfl';
 import { DashboardPage, FreeAgentsPage, RostersPage, WatchlistPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
+import { configured, supabase } from './supabase';
 import { ago } from './ui';
 
 const TABS = [
@@ -31,6 +33,81 @@ const tabFromHash = (): TabId => {
 export type Update = (s: Snapshot) => void;
 
 export function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!configured) {
+    return (
+      <Centered>
+        <h2>Almost there</h2>
+        <p>
+          This build doesn't know which Supabase project to use. Check that the <code>SUPABASE_PROJECT_ID</code> and{' '}
+          <code>SUPABASE_ACCESS_TOKEN</code> secrets are set in GitHub, then re-run the deploy workflow.
+        </p>
+      </Centered>
+    );
+  }
+  if (session === undefined) return <Centered>Loading…</Centered>;
+  if (!session) return <SignIn />;
+  return <Main email={session.user.email ?? ''} />;
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="centered">
+      <div className="card signin">{children}</div>
+    </div>
+  );
+}
+
+function SignIn() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) setError(error.message);
+    setBusy(false);
+  };
+
+  return (
+    <Centered>
+      <div className="brand">
+        <span className="brand-icon">🏈</span>
+        <div>
+          <strong>Dynasty</strong>
+          <span>Command Center</span>
+        </div>
+      </div>
+      <form onSubmit={submit}>
+        <label className="field">
+          <span className="field-label">Email</span>
+          <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </label>
+        <label className="field">
+          <span className="field-label">Password</span>
+          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </label>
+        {error && <p className="warn">{error}</p>}
+        <button className="primary wide" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </Centered>
+  );
+}
+
+function Main({ email }: { email: string }) {
   const [tab, setTab] = useState<TabId>(tabFromHash);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,6 +156,12 @@ export function App() {
             </a>
           ))}
         </nav>
+        <div className="signout">
+          <span className="muted small">{email}</span>
+          <button className="link" onClick={() => supabase.auth.signOut()}>
+            Sign out
+          </button>
+        </div>
       </aside>
       <main>
         <div className="topbar">
@@ -98,7 +181,7 @@ export function App() {
         </div>
         {error && <div className="banner error">{error}</div>}
         {!snap ? (
-          <p className="muted">Loading…</p>
+          !error && <p className="muted">Loading…</p>
         ) : (
           <Page tab={tab} snap={snap} update={setSnap} refresh={doRefresh} />
         )}

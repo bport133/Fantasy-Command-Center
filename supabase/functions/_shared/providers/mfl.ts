@@ -1,9 +1,9 @@
 // MyFantasyLeague export API: https://api.myfantasyleague.com/2026/api_info
 
-import type { DraftPick, LeagueConfig, LeagueData, RosterPlayer, Slot, Team } from '../../shared/types.js';
-import { asArray, getJson } from '../http.js';
-import { displayName, normalizeName } from '../names.js';
-import { readJson, writeJson } from '../store.js';
+import type { DraftPick, LeagueConfig, LeagueData, RosterPlayer, Slot, Team } from '../types.ts';
+import { asArray, getJson } from '../http.ts';
+import { displayName, normalizeName } from '../names.ts';
+import type { Store } from '../store.ts';
 
 const PLAYER_CACHE_MS = 24 * 60 * 60 * 1000;
 
@@ -24,9 +24,9 @@ interface MflPlayer {
   nfl: string;
 }
 
-async function loadMflPlayers(host: string, season: number, apiKey: string, fetchJson: typeof getJson) {
-  const file = `cache-mfl-players-${season}.json`;
-  const cached = readJson<{ at: number; players: Record<string, MflPlayer> } | null>(file, null);
+async function loadMflPlayers(store: Store, host: string, season: number, apiKey: string, fetchJson: typeof getJson) {
+  const file = `cache:mfl-players-${season}`;
+  const cached = await store.get<{ at: number; players: Record<string, MflPlayer> } | null>(file, null);
   if (cached && Date.now() - cached.at < PLAYER_CACHE_MS) return cached.players;
   const params: Record<string, string> = {};
   if (apiKey) params.APIKEY = apiKey;
@@ -35,7 +35,7 @@ async function loadMflPlayers(host: string, season: number, apiKey: string, fetc
   for (const p of asArray<any>(data?.players?.player)) {
     players[p.id] = { name: displayName(p.name ?? ''), pos: p.position === 'Def' ? 'DEF' : p.position, nfl: p.team || 'FA' };
   }
-  writeJson(file, { at: Date.now(), players });
+  await store.set(file, { at: Date.now(), players });
   return players;
 }
 
@@ -43,6 +43,7 @@ export async function fetchMflLeague(
   cfg: LeagueConfig,
   season: number,
   apiKey: string,
+  store: Store,
   fetchJson = getJson,
 ): Promise<LeagueData> {
   const host = mflHost(cfg.host);
@@ -54,7 +55,7 @@ export async function fetchMflLeague(
     fetchJson(exportUrl(host, season, 'rosters', base), opts),
     fetchJson(exportUrl(host, season, 'leagueStandings', base), opts).catch(() => null),
     fetchJson(exportUrl(host, season, 'futureDraftPicks', base), opts).catch(() => null),
-    loadMflPlayers(host, season, apiKey, fetchJson),
+    loadMflPlayers(store, host, season, apiKey, fetchJson),
   ]);
   for (const d of [league, rosters]) {
     if (d?.error) throw new Error(`MFL: ${d.error.$t ?? JSON.stringify(d.error)}`);
