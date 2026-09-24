@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Local settings, credentials, caches and alert history live here. Never commit.
+data/
+.env
+*.log
