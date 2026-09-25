@@ -1,4 +1,4 @@
-import type { PublicSettings, Settings, SecretKey, Snapshot } from '@shared/types.ts';
+import type { Member, PublicSettings, Settings, SecretKey, Snapshot } from '@shared/types.ts';
 import { ANON, SUPABASE_URL, supabase } from './supabase';
 
 async function call<T>(method: string, path: string, body?: unknown, contentType = 'application/json'): Promise<T> {
@@ -19,6 +19,10 @@ async function call<T>(method: string, path: string, body?: unknown, contentType
 }
 
 export const api = {
+  me: () => call<{ email: string; isOwner: boolean }>('GET', '/me'),
+  members: () => call<Member[]>('GET', '/members'),
+  addMember: (email: string, password: string) => call<Member[]>('POST', '/members', { email, password }),
+  removeMember: (email: string) => call<Member[]>('DELETE', `/members/${encodeURIComponent(email)}`),
   snapshot: () => call<Snapshot>('GET', '/snapshot'),
   refresh: () => call<Snapshot>('POST', '/refresh'),
   settings: () => call<PublicSettings>('GET', '/settings'),

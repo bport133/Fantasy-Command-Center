@@ -1,6 +1,13 @@
 // Types shared by the server and the browser.
 
 export type Platform = 'sleeper' | 'espn' | 'mfl';
+
+/** Someone the owner invited to use the app. */
+export interface Member {
+  email: string;
+  userId: string;
+  addedAt: string;
+}
 export type Position = 'QB' | 'RB' | 'WR' | 'TE';
 export const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE'];
 

@@ -98,11 +98,18 @@ supabase/migrations/           Database table + 15-minute pg_cron schedule
 test/                          Vitest tests (npm test)
 ```
 
+**Sharing with friends:** the owner (`OWNER_EMAIL`) sees a **👥 Members** page. Add a friend's email and
+a starting password, then send them the site link. Each member has their own leagues, settings,
+keys, watchlist and alerts (stored per user in `user_state`), and can change their password under
+Settings → Account. Only the owner and listed members can use the app, even if someone creates a
+Supabase account another way. Removing a member deletes their account and data.
+
 **Security:**
-- Settings, including the ESPN cookies and API keys, live in one table with row-level security and
-  no access policies. Only the Edge Function (using the service role) can read it.
-- The function only answers requests signed in as `OWNER_EMAIL`, and it never returns stored
-  secrets to the browser.
+- Settings, including ESPN cookies, MFL sign-in and API keys, live in tables with row-level security
+  and no access policies. Only the Edge Function (using the service role) can read them, and it
+  only ever reads the signed-in person's own rows.
+- The function only answers the owner and invited members, and it never returns stored secrets to
+  the browser.
 - The key built into the website is Supabase's public anon key, which is designed to be public.
 
 **Data sources:**

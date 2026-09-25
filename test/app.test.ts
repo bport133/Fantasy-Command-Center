@@ -42,17 +42,44 @@ function fakeApis(url: string): unknown {
   throw new Error(`unexpected fetch ${url}`);
 }
 
-function deps(overrides: Partial<AppDeps> = {}) {
+const USERS: Record<string, { id: string; email: string }> = {
+  'Bearer good': { id: 'u-owner', email: 'owner@example.com' },
+  'Bearer friend': { id: 'u-friend', email: 'friend@example.com' },
+  'Bearer stranger': { id: 'u-stranger', email: 'stranger@example.com' },
+};
+
+function deps() {
   const store = memoryStore();
+  const users = new Map<string, ReturnType<typeof memoryStore>>();
+  const userStore = (id: string) => {
+    if (!users.has(id)) users.set(id, memoryStore());
+    return users.get(id)!;
+  };
   const pending: Promise<unknown>[] = [];
-  const d: AppDeps & { pending: Promise<unknown>[]; store: typeof store } = {
+  const created: { email: string; password: string }[] = [];
+  const deleted: string[] = [];
+  const d = {
     store,
-    isOwner: async (req: Request) => req.headers.get('authorization') === 'Bearer good',
+    userStore,
+    users,
+    own: () => userStore('u-owner'),
+    listUserIds: async () => [...users.entries()].filter(([, s]) => 'settings' in s.data).map(([id]) => id),
+    deleteUserData: async (id: string) => void users.delete(id),
+    authenticate: async (req: Request) => USERS[req.headers.get('authorization') ?? ''] ?? null,
+    ownerEmail: 'owner@example.com',
+    admin: {
+      createUser: async (email: string, password: string) => {
+        created.push({ email, password });
+        return email === 'friend@example.com' ? 'u-friend' : `u-${email}`;
+      },
+      deleteUser: async (id: string) => void deleted.push(id),
+    },
+    created,
+    deleted,
     cronUrl: `${BASE}/cron`,
     background: (w: Promise<unknown>) => pending.push(w),
     pending,
-    ...overrides,
-  } as any;
+  };
   return d;
 }
 
@@ -78,10 +105,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('api function', () => {
-  it('rejects requests without the owner token', async () => {
+  it('rejects requests without a valid sign-in', async () => {
     const d = deps();
     const res = await call(d, 'GET', '/snapshot', undefined, 'Bearer nope');
     expect(res.status).toBe(401);
+    // A real Supabase account that wasn't invited gets nothing.
+    expect((await call(d, 'GET', '/snapshot', undefined, 'Bearer stranger')).status).toBe(403);
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
   });
 
@@ -144,8 +173,8 @@ describe('api function', () => {
     const pub = await res.json();
     expect(pub).toMatchObject({ mflUsername: 'tony', secretsSet: { mflCookie: true } });
     expect(JSON.stringify(pub)).not.toContain('cookie123');
-    expect(JSON.stringify(d.store.data)).not.toContain('hunter2');
-    expect((d.store.data.settings as any).mflCookie).toBe('cookie123');
+    expect(JSON.stringify(d.own().data)).not.toContain('hunter2');
+    expect((d.own().data.settings as any).mflCookie).toBe('cookie123');
   });
 
   it('imports a rankings CSV', async () => {
@@ -169,8 +198,84 @@ describe('api function', () => {
     const first = await tick(cron.secret);
     expect(first.status).toBe(202);
     await Promise.all(d.pending);
-    expect((d.store.data.snapshot as Snapshot).refreshedAt).not.toBeNull();
+    expect((d.own().data.snapshot as Snapshot).refreshedAt).not.toBeNull();
     // Refreshed moments ago, so the next tick is a no-op.
-    expect(await (await tick(cron.secret)).json()).toEqual({ ran: false });
+    expect(await (await tick(cron.secret)).json()).toEqual({ ran: 0 });
+  });
+});
+
+describe('multiple users', () => {
+  it('lets the owner invite, and remove, members', async () => {
+    const d = deps();
+    expect((await call(d, 'GET', '/snapshot', undefined, 'Bearer friend')).status).toBe(403);
+
+    const bad = await call(d, 'POST', '/members', { email: 'friend@example.com', password: 'short' });
+    expect(bad.status).toBe(400);
+    const res = await call(d, 'POST', '/members', { email: 'Friend@Example.com', password: 'welcome-2026' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([expect.objectContaining({ email: 'friend@example.com', userId: 'u-friend' })]);
+    expect(d.created).toEqual([{ email: 'friend@example.com', password: 'welcome-2026' }]);
+
+    // Members can use the app but can't manage members.
+    expect((await call(d, 'GET', '/snapshot', undefined, 'Bearer friend')).status).toBe(200);
+    expect(await (await call(d, 'GET', '/me', undefined, 'Bearer friend')).json()).toEqual({ email: 'friend@example.com', isOwner: false });
+    expect((await call(d, 'POST', '/members', { email: 'x@y.com', password: '12345678' }, 'Bearer friend')).status).toBe(403);
+
+    // Removing deletes their account and data.
+    await call(d, 'PUT', '/watchlist', ['Travis Hunter'], 'Bearer friend');
+    expect(d.users.has('u-friend')).toBe(true);
+    const removed = await call(d, 'DELETE', '/members/friend%40example.com');
+    expect(await removed.json()).toEqual([]);
+    expect(d.deleted).toEqual(['u-friend']);
+    expect(d.users.has('u-friend')).toBe(false);
+    expect((await call(d, 'GET', '/snapshot', undefined, 'Bearer friend')).status).toBe(403);
+  });
+
+  it("keeps each person's settings and data separate", async () => {
+    const d = deps();
+    await call(d, 'POST', '/members', { email: 'friend@example.com', password: 'welcome-2026' });
+    await call(d, 'PUT', '/settings', { fpApiKey: 'owner-key', leagues: [{ id: 's', platform: 'sleeper', leagueId: '1', myTeam: 'bport133' }] });
+    await call(d, 'PUT', '/watchlist', ['Bijan Robinson']);
+
+    const friendSettings = await (await call(d, 'GET', '/settings', undefined, 'Bearer friend')).json();
+    expect(friendSettings.leagues).toEqual([]);
+    expect(friendSettings.secretsSet.fpApiKey).toBe(false);
+    expect(await (await call(d, 'GET', '/watchlist', undefined, 'Bearer friend')).json()).toEqual([]);
+
+    await call(d, 'PUT', '/watchlist', ['Travis Hunter'], 'Bearer friend');
+    expect(await (await call(d, 'GET', '/watchlist')).json()).toEqual(['Bijan Robinson']);
+    expect(JSON.stringify(d.users.get('u-friend')!.data)).not.toContain('owner-key');
+  });
+
+  it("moves the owner's pre-multi-user data into their account once", async () => {
+    const d = deps();
+    await d.store.set('settings', { fpApiKey: 'legacy-key', leagues: [] });
+    await d.store.set('watchlist', ['Joe Burrow']);
+    await d.store.set('cache:sleeper-players', { at: 1, players: {} });
+
+    expect(await (await call(d, 'GET', '/watchlist')).json()).toEqual(['Joe Burrow']);
+    expect((await (await call(d, 'GET', '/settings')).json()).secretsSet.fpApiKey).toBe(true);
+    // Credentials no longer sit in shared storage; shared caches stay shared.
+    expect(d.store.data.settings).toBeNull();
+    expect(d.store.data['cache:sleeper-players']).toBeDefined();
+    // A member signing in never picks up the owner's old data.
+    await call(d, 'POST', '/members', { email: 'friend@example.com', password: 'welcome-2026' });
+    expect(await (await call(d, 'GET', '/watchlist', undefined, 'Bearer friend')).json()).toEqual([]);
+  });
+
+  it('scheduled refresh covers every user whose refresh is due', async () => {
+    const d = deps();
+    await call(d, 'POST', '/members', { email: 'friend@example.com', password: 'welcome-2026' });
+    const league = { leagues: [{ id: 's', platform: 'sleeper', leagueId: '1', myTeam: 'bport133' }], autoRefreshMinutes: 60 };
+    await call(d, 'PUT', '/settings', league);
+    await call(d, 'PUT', '/settings', league, 'Bearer friend');
+    const { secret } = d.store.data.cron as { secret: string };
+    const tick = () => handle(new Request(`${BASE}/cron`, { method: 'POST', headers: { 'x-cron-secret': secret } }), d);
+
+    expect(await (await tick()).json()).toEqual({ ran: 2 });
+    await Promise.all(d.pending);
+    expect((d.users.get('u-owner')!.data.snapshot as Snapshot).refreshedAt).not.toBeNull();
+    expect((d.users.get('u-friend')!.data.snapshot as Snapshot).refreshedAt).not.toBeNull();
+    expect(await (await tick()).json()).toEqual({ ran: 0 });
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LeagueConfig, Platform, PublicSettings, SecretKey, Settings, Snapshot } from '@shared/types.ts';
 import { api } from '../api';
+import { supabase } from '../supabase';
 import type { Update } from '../App';
 import { PageHead, Section } from '../ui';
 
@@ -196,6 +197,8 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
         </Section>
       </div>
 
+      <AccountSection />
+
       <div className="savebar">
         {msg && <span className={msg.ok ? 'ok' : 'warn'}>{msg.text}</span>}
         <button onClick={() => save(false)} disabled={saving}>
@@ -277,6 +280,40 @@ function MflSignIn({ settings, onChange }: { settings: Draft; onChange: (s: Publ
         {msg && <span className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</span>}
       </div>
     </Field>
+  );
+}
+
+/** Changes this app's sign-in password (the Supabase account), not any league site's. */
+function AccountSection() {
+  const [password, setPassword] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const change = async () => {
+    setMsg(null);
+    if (password.length < 8) return setMsg({ ok: false, text: 'Use at least 8 characters.' });
+    if (password !== confirmPw) return setMsg({ ok: false, text: "The two passwords don't match." });
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) return setMsg({ ok: false, text: error.message });
+    setPassword('');
+    setConfirmPw('');
+    setMsg({ ok: true, text: 'Password changed.' });
+  };
+
+  return (
+    <Section title="Account">
+      <div className="row wrap">
+        <input type="password" autoComplete="new-password" placeholder="New password for this app" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input type="password" autoComplete="new-password" placeholder="Type it again" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+        <button onClick={change} disabled={busy || !password}>
+          {busy ? 'Saving…' : 'Change password'}
+        </button>
+      </div>
+      {msg && <p className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</p>}
+    </Section>
   );
 }
 

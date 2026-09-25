@@ -68,8 +68,10 @@ export async function refreshDue(store: Store, now = Date.now()): Promise<boolea
  * fetchRemote=false recomputes the snapshot from cached league data (after a settings,
  * watchlist or rankings change) without calling any external API.
  */
-export async function refresh(store: Store, opts: { fetchRemote?: boolean } = {}): Promise<Snapshot> {
+export async function refresh(store: Store, opts: { fetchRemote?: boolean; cache?: Store } = {}): Promise<Snapshot> {
   const fetchRemote = opts.fetchRemote ?? true;
+  // Public lookup data (player databases) is shared by every user; everything else is per user.
+  const cache = opts.cache ?? store;
   const settings = await loadSettings(store);
   const sources: SourceStatus[] = [];
   const errors = new Map<string, string>();
@@ -104,13 +106,13 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean } = {}
   let info = new Map<string, PlayerInfo>();
   if (fetchRemote && settings.leagues.length > 0) {
     try {
-      sleeperDb = await loadSleeperPlayers(store);
+      sleeperDb = await loadSleeperPlayers(cache);
       info = playerInfoIndex(sleeperDb);
     } catch (err) {
       sources.push({ source: 'Sleeper players', ok: false, message: (err as Error).message });
     }
   } else {
-    const cached = await store.get<{ players: PlayerDb } | null>(PLAYER_CACHE, null);
+    const cached = await cache.get<{ players: PlayerDb } | null>(PLAYER_CACHE, null);
     if (cached) info = playerInfoIndex(cached.players);
   }
 
@@ -127,7 +129,7 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean } = {}
         return;
       }
       try {
-        const data = await fetchLeague(cfg, settings, sleeperDb, store);
+        const data = await fetchLeague(cfg, settings, sleeperDb, cache);
         leagues.push(data);
         leagueCache[cfg.id] = data;
         const rostered = data.teams.reduce((n, t) => n + t.players.length, 0);

@@ -7,6 +7,7 @@ import { MflCapPage, MflExpiringPage } from './pages/Mfl';
 import { MflLeaguePage } from './pages/MflLeague';
 import { DashboardPage, FreeAgentsPage, RostersPage, WatchlistPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
+import { MembersPage } from './pages/Members';
 import { configured, supabase } from './supabase';
 import { ago } from './ui';
 
@@ -24,7 +25,10 @@ const TABS = [
   { id: 'alerts', icon: '🔔', label: 'Alerts' },
   { id: 'rankings', icon: '🏆', label: 'FP Rankings' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
+  { id: 'members', icon: '👥', label: 'Members' },
 ] as const;
+/** Tabs only the app owner sees. */
+const OWNER_TABS = new Set<string>(['members']);
 type TabId = (typeof TABS)[number]['id'];
 
 const tabFromHash = (): TabId => {
@@ -121,8 +125,11 @@ function Main({ email }: { email: string }) {
     return () => removeEventListener('hashchange', onHash);
   }, []);
 
+  const [isOwner, setIsOwner] = useState(false);
+
   useEffect(() => {
     api.snapshot().then(setSnap, (e) => setError(e.message));
+    api.me().then((me) => setIsOwner(me.isOwner), () => {});
   }, []);
 
   const doRefresh = useCallback(async () => {
@@ -150,7 +157,7 @@ function Main({ email }: { email: string }) {
           </div>
         </div>
         <nav>
-          {TABS.map((t) => (
+          {TABS.filter((t) => isOwner || !OWNER_TABS.has(t.id)).map((t) => (
             <a key={t.id} href={`#${t.id}`} className={tab === t.id ? 'active' : undefined}>
               <span className="nav-icon">{t.icon}</span>
               <span>{t.label}</span>
@@ -185,15 +192,27 @@ function Main({ email }: { email: string }) {
         {!snap ? (
           !error && <p className="muted">Loading…</p>
         ) : (
-          <Page tab={tab} snap={snap} update={setSnap} refresh={doRefresh} />
+          <Page tab={tab} snap={snap} update={setSnap} refresh={doRefresh} isOwner={isOwner} />
         )}
       </main>
     </div>
   );
 }
 
-function Page({ tab, snap, update, refresh }: { tab: TabId; snap: Snapshot; update: Update; refresh: () => void }) {
-  const needsSetup = snap.leagues.length === 0 && snap.fpCount === 0 && tab !== 'settings';
+function Page({
+  tab,
+  snap,
+  update,
+  refresh,
+  isOwner,
+}: {
+  tab: TabId;
+  snap: Snapshot;
+  update: Update;
+  refresh: () => void;
+  isOwner: boolean;
+}) {
+  const needsSetup = snap.leagues.length === 0 && snap.fpCount === 0 && tab !== 'settings' && tab !== 'members';
   if (needsSetup) {
     return (
       <div className="card onboarding">
@@ -231,5 +250,7 @@ function Page({ tab, snap, update, refresh }: { tab: TabId; snap: Snapshot; upda
       return <RankingsPage snap={snap} />;
     case 'settings':
       return <SettingsPage snap={snap} update={update} refresh={refresh} />;
+    case 'members':
+      return isOwner ? <MembersPage /> : <p className="empty">Only the app owner can manage members.</p>;
   }
 }
