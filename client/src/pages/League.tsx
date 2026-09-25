@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { POSITIONS, type Snapshot } from '@shared/types.ts';
 import { api } from '../api';
+import { dfsRankings } from '@shared/dfs.ts';
 import type { Update } from '../App';
 import { Chips, PageHead, POS_FILTER, PosBadge, Section, Table } from '../ui';
 import { ValueBar } from './Overview';
@@ -158,13 +159,13 @@ export function AlertsPage({ snap, update }: { snap: Snapshot; update: Update })
   );
 }
 
-type FpView = { kind: 'set'; key: string } | { kind: 'projections' } | { kind: 'news' };
+type FpView = { kind: 'set'; key: string } | { kind: 'projections' } | { kind: 'dfs' } | { kind: 'news' };
 
 export function RankingsPage({ snap }: { snap: Snapshot }) {
   const sets = snap.rankingSets ?? [];
   const setKey = (r: { type: string; scoring: string }) => `${r.type}:${r.scoring}`;
   const [view, setView] = useState<FpView>(sets[0] ? { kind: 'set', key: setKey(sets[0]) } : { kind: 'projections' });
-  const [pos, setPos] = useState<(typeof POS_FILTER)[number]['value']>('ALL');
+  const [pos, setPos] = useState<string>('ALL');
   const [q, setQ] = useState('');
   const [mineOnly, setMineOnly] = useState(false);
   const match = (name: string, p: string) => (pos === 'ALL' || p === pos) && (!q || name.toLowerCase().includes(q.toLowerCase()));
@@ -172,6 +173,7 @@ export function RankingsPage({ snap }: { snap: Snapshot }) {
   const tabs = [
     ...sets.map((r) => ({ value: `set:${setKey(r)}`, label: r.label })),
     { value: 'projections', label: `Projections${snap.projections ? ` (wk ${snap.projections.week})` : ''}` },
+    { value: 'dfs', label: 'DFS (FanDuel)' },
     { value: 'news', label: 'News' },
   ];
   const current = view.kind === 'set' ? `set:${view.key}` : view.kind;
@@ -194,7 +196,11 @@ export function RankingsPage({ snap }: { snap: Snapshot }) {
       <Chips options={tabs} value={current} onChange={onTab} />
       {view.kind !== 'news' && (
         <div className="filters">
-          <Chips options={[...POS_FILTER]} value={pos} onChange={setPos} />
+          <Chips
+            options={[...POS_FILTER, ...(view.kind === 'dfs' || view.kind === 'projections' ? [{ value: 'DEF', label: 'DEF' }] : [])]}
+            value={pos}
+            onChange={setPos}
+          />
           <input className="search" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       )}
@@ -244,6 +250,8 @@ export function RankingsPage({ snap }: { snap: Snapshot }) {
         </Section>
       )}
 
+      {view.kind === 'dfs' && <DfsRankings snap={snap} pos={pos} q={q} />}
+
       {view.kind === 'news' && (
         <Section
           title="Player news"
@@ -280,5 +288,53 @@ export function RankingsPage({ snap }: { snap: Snapshot }) {
         </Section>
       )}
     </>
+  );
+}
+
+function DfsRankings({ snap, pos, q }: { snap: Snapshot; pos: string; q: string }) {
+  const weekly = (snap.rankingSets ?? []).find((r) => r.type === 'weekly');
+  const rows = useMemo(() => (snap.dfs ? dfsRankings(snap.dfs.players, weekly?.players ?? []) : []), [snap.dfs, weekly]);
+  if (!snap.dfs) {
+    return (
+      <Section title="DFS rankings">
+        <p className="empty">
+          DFS rankings need FanDuel salaries: load a FanDuel players list on the <a href="#dfs">FanDuel DFS</a> page first. Until then, the
+          Projections tab has this week's FantasyPros projections.
+        </p>
+      </Section>
+    );
+  }
+  const shown = rows
+    .filter((r) => (pos === 'ALL' || r.pos === pos) && (!q || r.name.toLowerCase().includes(q.toLowerCase())))
+    .sort((a, b) => (pos === 'ALL' ? b.projection - a.projection : a.posRank - b.posRank));
+  return (
+    <Section
+      title={`DFS rankings · FanDuel slate (${snap.dfs.games.length} games)`}
+      aside={<a href="#dfs">Build lineups →</a>}
+    >
+      <p className="muted small">
+        {snap.dfs.projectionNote} 💎 = value play (top-quarter points per $1k at the position with at least a median projection).
+        {!weekly && ' Turn on Weekly rankings in Settings → FantasyPros to see FantasyPros weekly ranks here.'}
+      </p>
+      <Table
+        rows={shown}
+        rowKey={(r) => r.id}
+        columns={[
+          { key: 'posRank', label: 'Pos rk', align: 'right', render: (r) => `${r.pos}${r.posRank}`, sort: (r) => r.posRank },
+          { key: 'name', label: 'Player', render: (r) => <>{r.name}{r.valuePlay && ' 💎'}</> },
+          { key: 'pos', label: 'Pos', render: (r) => <PosBadge pos={r.pos} /> },
+          { key: 'team', label: 'Team' },
+          { key: 'opp', label: 'Opp' },
+          { key: 'salary', label: 'Salary', align: 'right', render: (r) => `$${r.salary.toLocaleString()}` },
+          { key: 'projection', label: 'Proj', align: 'right', render: (r) => `${r.projection.toFixed(1)}${r.projectionSource === 'FanDuel FPPG' ? '*' : ''}` },
+          { key: 'valuePer1k', label: 'Pts/$1k', align: 'right', render: (r) => r.valuePer1k.toFixed(2) },
+          { key: 'valueRank', label: 'Value rk', align: 'right' },
+          { key: 'fpRank', label: 'FP weekly rk', align: 'right' },
+          { key: 'fpTier', label: 'Tier', align: 'right' },
+          { key: 'injury', label: 'Status', render: (r) => (r.injury ? <span className="warn">{r.injury}</span> : '') },
+        ]}
+      />
+      <p className="muted small">* FanDuel season average (no FantasyPros projection matched).</p>
+    </Section>
   );
 }

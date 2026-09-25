@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeContext, planKeepers } from '../supabase/functions/_shared/analysis.ts';
-import { FANDUEL, lineupsCsv, optimizeLineup, optimizeLineups, parseFanDuelCsv } from '../supabase/functions/_shared/dfs.ts';
+import { dfsRankings, FANDUEL, lineupsCsv, optimizeLineup, optimizeLineups, parseFanDuelCsv } from '../supabase/functions/_shared/dfs.ts';
 import { isPreseason, rankingFor } from '../supabase/functions/_shared/formats.ts';
 import { normalizeName } from '../supabase/functions/_shared/names.ts';
 import { parseFantasyProsNews, parseFantasyProsProjections } from '../supabase/functions/_shared/providers/fantasypros.ts';
@@ -268,5 +268,24 @@ describe('FanDuel lineup optimizer', () => {
   it('returns null when no legal lineup fits', () => {
     const pool = makePool(9, { QB: 1, RB: 1, WR: 3, TE: 1, DEF: 1 });
     expect(optimizeLineup(pool)).toBeNull();
+  });
+});
+
+describe('DFS rankings', () => {
+  const base = { opp: '', game: '', fppg: 0, injury: '', projectionSource: 'FantasyPros' as const };
+  const wr = (id: string, salary: number, projection: number, injury = '') => ({
+    ...base, id, name: `WR ${id}`, key: `wr ${id}`, pos: 'WR', team: 'X', salary, projection, injury,
+  });
+  it('ranks by projection and value per position, flags value plays, sinks injured players', () => {
+    const rows = dfsRankings(
+      [wr('a', 9000, 20), wr('b', 5000, 14), wr('c', 7000, 15), wr('d', 4500, 6), wr('e', 8000, 25, 'O')],
+      [{ key: 'wr c', rank: 12, tier: 3 }],
+    );
+    expect(rows.map((r) => [r.id, r.posRank])).toEqual([['a', 1], ['c', 2], ['b', 3], ['d', 4], ['e', 5]]);
+    const b = rows.find((r) => r.id === 'b')!;
+    expect(b).toMatchObject({ valueRank: 1, valuePer1k: 2.8, valuePlay: true });
+    expect(rows.find((r) => r.id === 'd')!.valuePlay).toBe(false); // cheap but below median projection
+    expect(rows.find((r) => r.id === 'e')!.valuePlay).toBe(false);
+    expect(rows.find((r) => r.id === 'c')).toMatchObject({ fpRank: 12, fpTier: 3 });
   });
 });

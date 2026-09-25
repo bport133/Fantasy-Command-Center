@@ -289,3 +289,50 @@ export function lineupsCsv(lineups: Lineup[]): string {
   const header = FANDUEL.slots.join(',');
   return [header, ...lineups.map((l) => FANDUEL.slots.map((_, i) => l.players[i]?.id ?? '').join(','))].join('\n') + '\n';
 }
+
+export interface DfsRankingRow extends DfsPlayer {
+  /** Rank within the position by projected points. */
+  posRank: number;
+  /** Rank within the position by points per $1,000 of salary. */
+  valueRank: number;
+  valuePer1k: number;
+  /** FantasyPros weekly consensus rank (overall) and tier, when the weekly set is loaded. */
+  fpRank?: number;
+  fpTier?: number;
+  /** Top-quarter value at the position with at least a median projection. */
+  valuePlay: boolean;
+}
+
+/**
+ * DFS rankings for the loaded slate, per position: by projection, by value (points per $1k),
+ * with FantasyPros' weekly rank alongside. Players who won't play (Out/IR) rank last.
+ */
+export function dfsRankings(players: DfsPlayer[], weekly: { key: string; rank: number; tier: number }[] = []): DfsRankingRow[] {
+  const fp = new Map(weekly.map((p) => [p.key, p]));
+  const out: DfsRankingRow[] = [];
+  const positions = [...new Set(players.map((p) => p.pos))];
+  for (const pos of positions) {
+    const group = players
+      .filter((p) => p.pos === pos)
+      .map((p) => ({ ...p, valuePer1k: p.salary ? Math.round((p.projection / p.salary) * 1000 * 100) / 100 : 0, out: OUT_TAGS.has(p.injury.toUpperCase()) }));
+    const byProj = [...group].sort((a, b) => Number(a.out) - Number(b.out) || b.projection - a.projection);
+    const byValue = [...group].sort((a, b) => Number(a.out) - Number(b.out) || b.valuePer1k - a.valuePer1k);
+    const active = byProj.filter((p) => !p.out && p.projection > 0);
+    const median = active.length ? active[Math.floor(active.length / 2)].projection : 0;
+    const valueCut = Math.max(1, Math.ceil(active.length / 4));
+    const valueRank = new Map(byValue.map((p, i) => [p.id, i + 1]));
+    byProj.forEach((p, i) => {
+      const { out: isOut, ...rest } = p;
+      const f = fp.get(p.key);
+      out.push({
+        ...rest,
+        posRank: i + 1,
+        valueRank: valueRank.get(p.id)!,
+        fpRank: f?.rank,
+        fpTier: f?.tier,
+        valuePlay: !isOut && p.projection >= median && valueRank.get(p.id)! <= valueCut,
+      });
+    });
+  }
+  return out;
+}

@@ -41,8 +41,8 @@ code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 .nav { background: var(--panel); border-right: 1px solid var(--border); padding: 16px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 4px 8px 18px; }
-.brand-icon { font-size: 28px; }
-.brand strong { display: block; font-size: 16px; letter-spacing: 0.5px; }
+.brand-icon { font-size: 24px; }
+.brand strong { display: block; font-size: 15px; letter-spacing: 0.3px; white-space: nowrap; }
 .brand span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 .nav nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--text); }
@@ -196,3 +196,5 @@ ul.news li:last-child { border-bottom: none; }
 ul.news li.mine { background: var(--mine); padding: 10px; border-radius: 8px; }
 ul.news p { margin: 6px 0 0; }
 .news-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+details.advanced { margin-top: 4px; }
+details.advanced summary { cursor: pointer; color: var(--wr); margin-bottom: 10px; }

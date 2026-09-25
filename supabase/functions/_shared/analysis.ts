@@ -425,7 +425,7 @@ export function mflCap(ctx: Context, league: LeagueData): MflCapView | null {
   });
   [...positions].sort((a, b) => b.total - a.total).forEach((p, i) => (p.capRank = i + 1));
 
-  return { configId: league.configId, league: league.name, seasons, years, positions, contracts };
+  return { configId: league.configId, league: league.name, capSource: league.salaryCap ? 'MFL' : 'Settings', seasons, years, positions, contracts };
 }
 
 export function mflExpiring(ctx: Context, league: LeagueData): MflExpiringView {

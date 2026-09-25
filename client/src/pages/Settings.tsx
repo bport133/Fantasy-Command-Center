@@ -262,9 +262,44 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
             'API key (optional, instead of signing in)',
             'Log in at myfantasyleague.com, open your league, then Help → Developer\'s API. The key is shown on that page.',
           )}
-          <NumField label="Salary cap" help="Used if MFL doesn't report one" value={draft.mflSalaryCap} onChange={(v) => set('mflSalaryCap', v)} />
-          <NumField label="Contract-year cap" help="Total contract years allowed" value={draft.mflContractYearCap} onChange={(v) => set('mflContractYearCap', v)} />
-          <NumField label="Projection years" value={draft.projectionYears} onChange={(v) => set('projectionYears', v)} />
+          <Field label="Salary cap" help="Read from your MFL league settings on every refresh.">
+            <div>
+              {snap.mflCap.length === 0 ? (
+                <span className="muted">Shows here after your MFL league refreshes.</span>
+              ) : (
+                snap.mflCap.map((c) => (
+                  <div key={c.configId}>
+                    <strong>${(c.years[0]?.cap ?? 0).toLocaleString()}</strong>{' '}
+                    <span className={c.capSource === 'MFL' ? 'ok small' : 'warn small'}>
+                      {c.capSource === 'MFL' ? '✓ from MFL' : "MFL didn't report a cap; using the fallback below"}
+                    </span>
+                    {snap.mflCap.length > 1 && <span className="muted small"> · {c.league}</span>}
+                  </div>
+                ))
+              )}
+            </div>
+          </Field>
+          <NumField
+            label="Contract-year cap"
+            help="Your league's limit on total contract years across a roster. MFL doesn't share this rule, so enter it here (used on MFL Cap)."
+            value={draft.mflContractYearCap}
+            onChange={(v) => set('mflContractYearCap', v)}
+          />
+          <details className="advanced">
+            <summary>Advanced</summary>
+            <NumField
+              label="Fallback salary cap"
+              help="Only used if MFL doesn't report a cap for your league."
+              value={draft.mflSalaryCap}
+              onChange={(v) => set('mflSalaryCap', v)}
+            />
+            <NumField
+              label="Projection years"
+              help="How many seasons ahead the MFL Cap page projects contracts (a display choice, not league data)."
+              value={draft.projectionYears}
+              onChange={(v) => set('projectionYears', v)}
+            />
+          </details>
         </Section>
 
         <Section title="General & alerts">

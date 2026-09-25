@@ -339,6 +339,8 @@ export interface ContractRow {
 export interface MflCapView {
   configId: string;
   league: string;
+  /** Where the salary cap came from: MFL's league settings, or the fallback in Settings. */
+  capSource: 'MFL' | 'Settings';
   seasons: number[];
   years: CapYear[];
   positions: CapPositionRow[];
