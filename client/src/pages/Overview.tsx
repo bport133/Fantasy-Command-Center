@@ -18,7 +18,7 @@ export function DashboardPage({ snap }: { snap: Snapshot }) {
   const topAvailable = snap.leagues.flatMap((l) => snap.freeAgents.filter((f) => f.configId === l.configId).slice(0, 3));
   return (
     <>
-      <PageHead title="🏈 Dynasty Command Center" sub={snap.sources.map((s) => `${s.ok ? '✅' : '❌'} ${s.source}: ${s.message}`).join('   ·   ')} />
+      <PageHead title="🏈 Fantasy Football Command Center" sub={snap.sources.map((s) => `${s.ok ? '✅' : '❌'} ${s.source}: ${s.message}`).join('   ·   ')} />
       <div className="kpis">
         {snap.leagues.map((l) => (
           <div className="kpi" key={l.configId}>

@@ -93,7 +93,7 @@ function SignIn() {
       <div className="brand">
         <span className="brand-icon">🏈</span>
         <div>
-          <strong>Dynasty</strong>
+          <strong>Fantasy Football</strong>
           <span>Command Center</span>
         </div>
       </div>
@@ -154,7 +154,7 @@ function Main({ email }: { email: string }) {
         <div className="brand">
           <span className="brand-icon">🏈</span>
           <div>
-            <strong>Dynasty</strong>
+            <strong>Fantasy Football</strong>
             <span>Command Center</span>
           </div>
         </div>

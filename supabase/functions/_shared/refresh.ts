@@ -363,7 +363,7 @@ async function notify(url: string, alerts: Alert[]): Promise<void> {
     (a) =>
       `${a.watchlist ? '👀 ' : ''}${a.league}: ${a.player} (${a.pos}${a.rank ? ` #${a.rank}` : ''}) dropped by ${a.droppedBy}`,
   );
-  const text = `🔔 Dynasty drop alert\n${lines.join('\n')}`;
+  const text = `🔔 Fantasy Football Command Center drop alert\n${lines.join('\n')}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

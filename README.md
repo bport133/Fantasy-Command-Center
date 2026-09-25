@@ -1,6 +1,6 @@
-# 🏈 Dynasty Command Center
+# 🏈 Fantasy Football Command Center
 
-A web app version of the *Dynasty Command Center* spreadsheet. It pulls your leagues directly from
+A web app version of the *Dynasty Command Center* spreadsheet, now covering redraft, keeper, dynasty and DFS. It pulls your leagues directly from
 **Sleeper**, **ESPN** and **MyFantasyLeague**, values every player with **FantasyPros** dynasty
 rankings, and rebuilds every tab of the workbook.
 
