@@ -8,12 +8,14 @@ import { MflLeaguePage } from './pages/MflLeague';
 import { DashboardPage, FreeAgentsPage, RostersPage, WatchlistPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
 import { DfsPage } from './pages/Dfs';
+import { ScoreboardPage } from './pages/Scoreboard';
 import { MembersPage } from './pages/Members';
 import { configured, supabase } from './supabase';
 import { ago } from './ui';
 
 const TABS = [
   { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
+  { id: 'scoreboard', icon: '📺', label: 'Scoreboard' },
   { id: 'rosters', icon: '📋', label: 'My Rosters' },
   { id: 'free-agents', icon: '🆓', label: 'Free Agents' },
   { id: 'watchlist', icon: '👀', label: 'Watchlist' },
@@ -228,6 +230,8 @@ function Page({
   switch (tab) {
     case 'dashboard':
       return <DashboardPage snap={snap} />;
+    case 'scoreboard':
+      return <ScoreboardPage snap={snap} />;
     case 'rosters':
       return <RostersPage snap={snap} />;
     case 'free-agents':

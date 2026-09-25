@@ -1,7 +1,7 @@
 // ESPN Fantasy Football (unofficial v3 API). Private leagues need the espn_s2 and SWID
 // cookies from a logged-in browser session.
 
-import type { LeagueConfig, LeagueData, RosterPlayer, Slot, Team } from '../types.ts';
+import type { LeagueConfig, LeagueData, RosterPlayer, Slot, Team, WeekScore } from '../types.ts';
 import { getJson } from '../http.ts';
 import { normalizeName } from '../names.ts';
 
@@ -39,7 +39,7 @@ export async function fetchEspnLeague(
 ): Promise<LeagueData> {
   const url =
     `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}` +
-    `/segments/0/leagues/${encodeURIComponent(cfg.leagueId)}?view=mTeam&view=mRoster&view=mSettings`;
+    `/segments/0/leagues/${encodeURIComponent(cfg.leagueId)}?view=mTeam&view=mRoster&view=mSettings&view=mMatchupScore`;
   const data = await fetchJson(url, { label: 'ESPN', headers: espnHeaders(creds.espnS2, creds.espnSwid) });
   return parseEspnLeague(cfg, season, data);
 }
@@ -78,5 +78,24 @@ export function parseEspnLeague(cfg: LeagueConfig, season: number, data: any): L
     season,
     teams,
     picks: null,
+    scores: parseEspnSchedule(data.schedule ?? []),
   };
+}
+
+/** ESPN's schedule: one entry per matchup with home/away totals (live totals while in progress). */
+export function parseEspnSchedule(schedule: any[]): WeekScore[] {
+  const weeks = new Map<number, WeekScore>();
+  for (const m of schedule) {
+    const week = Number(m.matchupPeriodId);
+    if (!week) continue;
+    const w = weeks.get(week) ?? { week, final: true, teams: [] };
+    if (m.winner === 'UNDECIDED' || m.winner == null) w.final = false;
+    const side = (x: any) => (x ? { id: String(x.teamId), score: Number(x.totalPointsLive ?? x.totalPoints) || 0 } : null);
+    const home = side(m.home);
+    const away = side(m.away);
+    if (home) w.teams.push({ teamId: home.id, score: home.score, ...(away ? { opponentId: away.id } : {}) });
+    if (away) w.teams.push({ teamId: away.id, score: away.score, ...(home ? { opponentId: home.id } : {}) });
+    weeks.set(week, w);
+  }
+  return [...weeks.values()].sort((a, b) => a.week - b.week);
 }

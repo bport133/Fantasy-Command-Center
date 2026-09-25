@@ -175,6 +175,7 @@ export async function fetchMflLeague(
     standings: standings?.error ? null : standings,
     fetchJson,
   });
+  data.scores = data.mfl.scores;
   return data;
 }
 

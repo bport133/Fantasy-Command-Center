@@ -3,6 +3,7 @@
 import {
   LEAGUE_FORMATS,
   RANKING_TYPES,
+  RECORD_FORMATS,
   SCORINGS,
   SECRET_KEYS,
   type PublicSettings,
@@ -36,7 +37,7 @@ export async function loadSettings(store: Store): Promise<Settings> {
   const saved = await store.get<Partial<Settings> | null>('settings', {});
   const s: Settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
   // Leagues saved before formats existed were all valued as dynasty.
-  s.leagues = s.leagues.map((l) => ({ format: 'dynasty', rankings: 'auto', scoring: 'default', ...l }));
+  s.leagues = s.leagues.map((l) => ({ format: 'dynasty', rankings: 'auto', scoring: 'default', recordFormat: defaultRecordFormat(l.platform), ...l }));
   if (!SCORINGS.includes(s.fpScoring as never)) s.fpScoring = 'PPR';
   return s;
 }
@@ -60,6 +61,9 @@ const NUMERIC: (keyof Settings)[] = [
   'alertTopN',
   'autoRefreshMinutes',
 ];
+
+/** MFL leagues default to all-play plus a top-half win (the owner's MFL league); others to head-to-head. */
+export const defaultRecordFormat = (platform: string) => (platform === 'mfl' ? 'allplay+median' : 'h2h');
 
 const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
   const n = Math.round(Number(v));
@@ -98,6 +102,7 @@ export function mergeSettings(
           ...(l.format === 'keeper' ? { keepers: clampInt(l.keepers, 1, 25, 3) } : {}),
           rankings: RANKING_TYPES.includes(l.rankings) ? l.rankings : 'auto',
           scoring: SCORINGS.includes(l.scoring) ? l.scoring : 'default',
+          recordFormat: RECORD_FORMATS.includes(l.recordFormat) ? l.recordFormat : defaultRecordFormat(l.platform),
         }));
     } else if (k === 'fpTypes' && Array.isArray(v)) {
       next.fpTypes = RANKING_TYPES.filter((t) => v.includes(t));

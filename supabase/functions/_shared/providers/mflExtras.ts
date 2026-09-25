@@ -4,7 +4,7 @@
 // Each request is optional: a refusal (private data without the API key) or failure only blanks
 // its own section.
 
-import type { MflExtras, MflMatchup, MflSettings, MflTransaction, MflTrend, Team } from '../types.ts';
+import type { MflExtras, MflMatchup, MflSettings, MflTransaction, MflTrend, Team, WeekScore } from '../types.ts';
 import { asArray, getJson } from '../http.ts';
 
 export interface MflPlayerRef {
@@ -77,12 +77,14 @@ export async function fetchMflExtras(opts: {
   const projected = myRosterIds.length
     ? await get('Projections', opts.url('projectedScores', { PLAYERS: myRosterIds.join(',') }))
     : null;
+  const weekly = await get('Weekly results', opts.url('weeklyResults', { W: 'YTD' }));
+  const live = await get('Live scoring', opts.url('liveScoring'));
   const adds = await get('Trending adds', opts.globalUrl('topAdds', { COUNT: TREND_COUNT }));
   const drops = await get('Trending drops', opts.globalUrl('topDrops', { COUNT: TREND_COUNT }));
 
   return {
     ...parseMflExtras(
-      { league, rules, allRules, standings, schedule, transactions, tradeBait, pending, adjustments, calendar, injuries, ytd, projected, adds, drops },
+      { league, rules, allRules, standings, schedule, transactions, tradeBait, pending, adjustments, calendar, injuries, ytd, projected, adds, drops, weekly, live },
       opts.players,
     ),
     unavailable,
@@ -105,6 +107,8 @@ export interface MflExtrasRaw {
   projected?: any;
   adds?: any;
   drops?: any;
+  weekly?: any;
+  live?: any;
 }
 
 export function parseMflExtras(raw: MflExtrasRaw, players: Record<string, MflPlayerRef>): Omit<MflExtras, 'unavailable'> {
@@ -174,6 +178,7 @@ export function parseMflExtras(raw: MflExtrasRaw, players: Record<string, MflPla
       adds: trends(raw.adds?.topAdds?.player, players),
       drops: trends(raw.drops?.topDrops?.player, players),
     },
+    scores: parseMflScores(raw.weekly, raw.live),
   };
 }
 
@@ -297,4 +302,38 @@ function trends(list: any, players: Record<string, MflPlayerRef>): MflTrend[] {
       return ref ? { id: String(p.id), name: ref.name, pos: ref.pos, nfl: ref.nfl, percent: num(p.percent) ?? 0 } : null;
     })
     .filter((t): t is MflTrend => t !== null);
+}
+
+/**
+ * Weekly scores for every franchise. weeklyResults (W=YTD) covers finished weeks, including
+ * leagues with no head-to-head schedule (teams listed outside any matchup); liveScoring adds
+ * the week in progress.
+ */
+export function parseMflScores(weekly: any, live: any): WeekScore[] {
+  const weeks = new Map<number, WeekScore>();
+  const read = (w: any, final: boolean) => {
+    const week = num(w?.week);
+    if (!week) return;
+    const teams: WeekScore['teams'] = [];
+    for (const m of asArray<any>(w.matchup)) {
+      const fs = asArray<any>(m.franchise);
+      for (const f of fs) {
+        const opp = fs.find((o) => o.id !== f.id);
+        teams.push({ teamId: String(f.id), score: num(f.score) ?? 0, ...(opp ? { opponentId: String(opp.id) } : {}) });
+      }
+    }
+    for (const f of asArray<any>(w.franchise)) {
+      if (!teams.some((t) => t.teamId === String(f.id))) teams.push({ teamId: String(f.id), score: num(f.score) ?? 0 });
+    }
+    if (teams.length) weeks.set(week, { week, final, teams });
+  };
+  const results = weekly?.allWeeklyResults?.weeklyResults ?? weekly?.weeklyResults;
+  for (const w of asArray<any>(results)) read(w, true);
+  const ls = live?.liveScoring;
+  if (ls) {
+    const week = num(ls.week);
+    // Live scoring for a week weeklyResults already has as final is ignored.
+    if (week && !weeks.get(week)) read(ls, false);
+  }
+  return [...weeks.values()].sort((a, b) => a.week - b.week);
 }

@@ -49,6 +49,13 @@ function fakeApis(url: string): unknown {
       ];
     }
     if (p.endsWith('/traded_picks')) return [];
+    if (p.includes('/matchups/')) {
+      const week = Number(p.split('/').pop());
+      return [
+        { roster_id: 1, matchup_id: 1, points: 100 + week },
+        { roster_id: 2, matchup_id: 1, points: 90 + week * 3 },
+      ];
+    }
     return { name: 'Section V', status: 'in_season', settings: { draft_rounds: 3 } };
   }
   throw new Error(`unexpected fetch ${url}`);
@@ -153,6 +160,12 @@ describe('api function', () => {
     expect(snap.rosters[0].players[0].age).toBeGreaterThan(29);
     expect(snap.freeAgents.map((f) => f.name)).toEqual(['Travis Hunter']);
     expect(snap.teamChoices.s).toHaveLength(2);
+    // Weeks 1-3 of scores (NFL week 3 is live); head-to-head by default for Sleeper.
+    const board = snap.scoreboard[0];
+    expect(board).toMatchObject({ format: 'h2h', currentWeek: 3 });
+    expect(board.weeks.map((w) => [w.week, w.final])).toEqual([[1, true], [2, true], [3, false]]);
+    expect(board.weeks[2].matchups[0]).toMatchObject({ a: { team: 'bport133', score: 103, mine: true }, b: { team: 'bleys', score: 99 } });
+    expect(board.season.find((r) => r.mine)).toMatchObject({ record: { w: 2, l: 0, t: 0 }, pf: 203 });
 
     // The FantasyPros key went to FantasyPros as a header, not in the URL.
     const fpCall = vi.mocked(fetch).mock.calls.find(([u]) => String(u).includes('fantasypros'))!;

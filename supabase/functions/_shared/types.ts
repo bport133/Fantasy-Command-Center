@@ -25,6 +25,16 @@ export const RANKING_LABELS: Record<RankingType, string> = {
 };
 
 export type Scoring = 'PPR' | 'HALF' | 'STD';
+
+/** How a league turns weekly scores into wins and losses. */
+export type RecordFormat = 'h2h' | 'h2h+median' | 'allplay' | 'allplay+median';
+export const RECORD_FORMATS: RecordFormat[] = ['h2h', 'h2h+median', 'allplay', 'allplay+median'];
+export const RECORD_FORMAT_LABELS: Record<RecordFormat, string> = {
+  h2h: 'Head-to-head',
+  'h2h+median': 'Head-to-head + top-half win',
+  allplay: 'All-play (vs every team)',
+  'allplay+median': 'All-play + top-half win',
+};
 export const SCORINGS: Scoring[] = ['PPR', 'HALF', 'STD'];
 
 /** Current NFL calendar position (from Sleeper). */
@@ -53,6 +63,8 @@ export interface LeagueConfig {
   rankings?: RankingType | 'auto';
   /** Scoring for the rankings; 'default' uses the FantasyPros default in Settings. */
   scoring?: Scoring | 'default';
+  /** How weekly scores become wins/losses (Scoreboard). */
+  recordFormat?: RecordFormat;
 }
 
 export interface Settings {
@@ -130,6 +142,16 @@ export interface LeagueData {
   salaryCap?: number;
   /** MFL-only league detail. */
   mfl?: MflExtras;
+  /** Weekly fantasy scores, one entry per week played or in progress. */
+  scores?: WeekScore[];
+}
+
+export interface WeekScore {
+  week: number;
+  /** false while the week is still being played (live scores). */
+  final: boolean;
+  /** opponentId is set for head-to-head matchups (absent for byes or leagues without matchups). */
+  teams: { teamId: string; score: number; opponentId?: string }[];
 }
 
 // ---- MFL league detail (names already resolved from MFL ids) ----
@@ -151,6 +173,8 @@ export interface MflExtras {
   projections: Record<string, number>;
   projectionWeek?: number;
   trending: { adds: MflTrend[]; drops: MflTrend[] };
+  /** Every franchise's score by week (all weeks so far, plus the live current week). */
+  scores: WeekScore[];
   /** Sections MFL refused or that failed, with the reason, e.g. "Pending trades: needs the MFL API key". */
   unavailable: string[];
 }
@@ -407,6 +431,56 @@ export interface MflLeagueView {
   unavailable: string[];
 }
 
+export interface WLT {
+  w: number;
+  l: number;
+  t: number;
+}
+
+export interface ScoreboardTeamWeek {
+  teamId: string;
+  team: string;
+  score: number;
+  rank: number;
+  mine: boolean;
+  h2h?: 'W' | 'L' | 'T';
+  opponent?: string;
+  allPlay: WLT;
+  topHalf: 'W' | 'L' | 'T';
+  /** This week's record under the league's own format. */
+  record: WLT;
+}
+
+export interface ScoreboardWeek {
+  week: number;
+  final: boolean;
+  matchups: { a: { team: string; score: number; mine: boolean }; b?: { team: string; score: number; mine: boolean } }[];
+  teams: ScoreboardTeamWeek[];
+}
+
+export interface ScoreboardSeasonRow {
+  rank: number;
+  teamId: string;
+  team: string;
+  mine: boolean;
+  record: WLT;
+  h2h: WLT;
+  allPlay: WLT;
+  topHalf: WLT;
+  pf: number;
+}
+
+export interface ScoreboardLeague {
+  configId: string;
+  league: string;
+  platform: Platform;
+  format: RecordFormat;
+  currentWeek: number | null;
+  weeks: ScoreboardWeek[];
+  /** Season totals from completed weeks. */
+  season: ScoreboardSeasonRow[];
+}
+
 export interface WatchRow {
   name: string;
   pos?: string;
@@ -516,6 +590,7 @@ export interface Snapshot {
   mflCap: MflCapView[];
   mflExpiring: MflExpiringView[];
   mflLeague: MflLeagueView[];
+  scoreboard: ScoreboardLeague[];
   watchlist: WatchRow[];
   alerts: Alert[];
   /** Default ranking set (for name suggestions and the watchlist). */

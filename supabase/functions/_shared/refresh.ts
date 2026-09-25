@@ -41,8 +41,9 @@ import { dynastyValue, normalizeName } from './names.ts';
 import { fetchEspnLeague } from './providers/espn.ts';
 import { fetchFantasyProsNews, fetchFantasyProsProjections, fetchFantasyProsRankings } from './providers/fantasypros.ts';
 import { fetchMflLeague } from './providers/mfl.ts';
-import { fetchNflState, fetchSleeperLeague, loadSleeperPlayers, PLAYER_CACHE, playerInfoIndex, type PlayerDb } from './providers/sleeper.ts';
-import { loadSettings } from './settings.ts';
+import { fetchNflState, fetchSleeperLeague, fetchSleeperScores, loadSleeperPlayers, PLAYER_CACHE, playerInfoIndex, type PlayerDb } from './providers/sleeper.ts';
+import { defaultRecordFormat, loadSettings } from './settings.ts';
+import { buildScoreboard } from './scoreboard.ts';
 import type { Store } from './store.ts';
 
 const MAX_ALERTS = 500;
@@ -60,6 +61,7 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   mflCap: [],
   mflExpiring: [],
   mflLeague: [],
+  scoreboard: [],
   watchlist: [],
   alerts: [],
   rankings: [],
@@ -230,6 +232,9 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean; cache
     if (cached) info = playerInfoIndex(cached.players);
   }
 
+  // Week whose scores are live (none before the regular season starts).
+  const scoringWeek = nflState && nflState.seasonType !== 'pre' && nflState.seasonType !== 'off' ? nflState.week : null;
+
   const leagues: LeagueData[] = [];
   await Promise.all(
     settings.leagues.map(async (cfg) => {
@@ -244,6 +249,15 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean; cache
       }
       try {
         const data = await fetchLeague(cfg, settings, sleeperDb, cache);
+        // Sleeper keeps weekly scores in a separate endpoint; finished weeks are reused from the cache.
+        if (cfg.platform === 'sleeper' && scoringWeek) {
+          try {
+            data.scores = await fetchSleeperScores(cfg.leagueId, scoringWeek, leagueCache[cfg.id]?.scores);
+          } catch (err) {
+            data.scores = leagueCache[cfg.id]?.scores;
+            sources.push({ source: `${label} scores`, ok: false, message: (err as Error).message });
+          }
+        }
         leagues.push(data);
         leagueCache[cfg.id] = data;
         const rostered = data.teams.reduce((n, t) => n + t.players.length, 0);
@@ -322,6 +336,11 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean; cache
     mflCap: leagues.filter((l) => l.platform === 'mfl').map((l) => mflCap(ctxFor(l.configId), l)).filter((v) => v !== null),
     mflExpiring: leagues.filter((l) => l.platform === 'mfl').map((l) => mflExpiring(ctxFor(l.configId), l)),
     mflLeague: leagues.map((l) => mflLeagueView(ctxFor(l.configId), l)).filter((v) => v !== null),
+    scoreboard: leagues.map((l) => {
+      const cfg = settings.leagues.find((c) => c.id === l.configId);
+      const mine = cfg ? findMyTeam(l, cfg.myTeam) : null;
+      return buildScoreboard(l, cfg?.recordFormat ?? defaultRecordFormat(l.platform), scoringWeek, mine?.id ?? null);
+    }),
     watchlist: watchRows(ctx, leagues, watchlist),
     alerts,
     rankings: fp.map((p) => ({ ...p, age: info.get(p.key)?.age ?? p.age, value: dynastyValue(p.rank) })),

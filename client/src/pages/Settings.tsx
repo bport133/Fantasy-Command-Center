@@ -3,8 +3,11 @@ import {
   LEAGUE_FORMATS,
   RANKING_LABELS,
   RANKING_TYPES,
+  RECORD_FORMAT_LABELS,
+  RECORD_FORMATS,
   SCORINGS,
   type LeagueConfig,
+  type RecordFormat,
   type LeagueFormat,
   type Platform,
   type PublicSettings,
@@ -167,6 +170,15 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
                       {RANKING_TYPES.map((t) => (
                         <option key={t} value={t}>
                           {RANKING_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Weekly records" help="How the Scoreboard turns weekly scores into wins and losses">
+                    <select value={l.recordFormat ?? (l.platform === 'mfl' ? 'allplay+median' : 'h2h')} onChange={(e) => setLeague(l.id, { recordFormat: e.target.value as RecordFormat })}>
+                      {RECORD_FORMATS.map((f) => (
+                        <option key={f} value={f}>
+                          {RECORD_FORMAT_LABELS[f]}
                         </option>
                       ))}
                     </select>

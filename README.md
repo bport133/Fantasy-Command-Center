@@ -10,6 +10,7 @@ database and hourly refresh run on **Supabase**. There's nothing to install.
 | Tab | What it shows |
 | --- | --- |
 | 🏠 Dashboard | Each league's record, where you rank by dynasty value, top-100 players, average age, MFL cap snapshot, best free agents and recent drop alerts |
+| 📺 Scoreboard | Every league's week on one page: matchups with live scores, each team's score rank, all-play record and top-half win/loss, plus season standings. Each league's records follow its Weekly records setting (head-to-head, all-play, with or without a top-half win) |
 | 📋 My Rosters | Your team in each league sorted by dynasty value, with FP rank and tier, age, experience, lineup status, and MFL salary and contract years |
 | 🆓 Free Agents | The best FantasyPros-ranked players not rostered in each league. Star a player to watch him |
 | 👀 Watchlist | Who holds each watched player in every league, or whether he's a free agent |

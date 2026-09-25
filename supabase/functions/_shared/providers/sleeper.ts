@@ -1,6 +1,6 @@
 // Sleeper public API (no auth): https://docs.sleeper.com
 
-import type { DraftPick, LeagueConfig, LeagueData, NflState, PlayerInfo, RosterPlayer, Slot, Team } from '../types.ts';
+import type { DraftPick, LeagueConfig, LeagueData, NflState, PlayerInfo, RosterPlayer, Slot, Team, WeekScore } from '../types.ts';
 import { getJson } from '../http.ts';
 import { normalizeName } from '../names.ts';
 import type { Store } from '../store.ts';
@@ -161,5 +161,46 @@ export async function fetchNflState(fetchJson = getJson): Promise<NflState> {
     season: Number(s?.league_season ?? s?.season) || new Date().getFullYear(),
     week: Math.max(1, Number(s?.display_week ?? s?.week) || 1),
     seasonType: String(s?.season_type ?? 'regular'),
+  };
+}
+
+/**
+ * Weekly scores from Sleeper's matchups endpoint. Finished weeks never change, so only weeks
+ * missing from `known` (plus the current week) are fetched.
+ */
+export async function fetchSleeperScores(
+  leagueId: string,
+  currentWeek: number,
+  known: WeekScore[] = [],
+  fetchJson = getJson,
+): Promise<WeekScore[]> {
+  const keep = known.filter((w) => w.final && w.week < currentWeek);
+  const have = new Set(keep.map((w) => w.week));
+  const out = [...keep];
+  for (let week = 1; week <= currentWeek; week++) {
+    if (have.has(week)) continue;
+    const rows = await fetchJson<any[]>(`${BASE}/league/${encodeURIComponent(leagueId)}/matchups/${week}`, { label: 'Sleeper scores' });
+    const parsed = parseSleeperMatchups(rows ?? [], week, week < currentWeek);
+    if (parsed.teams.length) out.push(parsed);
+  }
+  return out.sort((a, b) => a.week - b.week);
+}
+
+export function parseSleeperMatchups(rows: any[], week: number, final: boolean): WeekScore {
+  const byMatchup = new Map<number, string[]>();
+  for (const r of rows) {
+    if (r?.matchup_id == null) continue;
+    byMatchup.set(r.matchup_id, [...(byMatchup.get(r.matchup_id) ?? []), String(r.roster_id)]);
+  }
+  return {
+    week,
+    final,
+    teams: rows
+      .filter((r) => r?.roster_id != null)
+      .map((r) => {
+        const pair = r.matchup_id != null ? byMatchup.get(r.matchup_id) ?? [] : [];
+        const opponentId = pair.find((id) => id !== String(r.roster_id));
+        return { teamId: String(r.roster_id), score: Number(r.custom_points ?? r.points) || 0, ...(opponentId ? { opponentId } : {}) };
+      }),
   };
 }
