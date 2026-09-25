@@ -203,7 +203,7 @@ function fetchLeague(cfg: Settings['leagues'][number], settings: Settings, sleep
     case 'espn':
       return fetchEspnLeague(cfg, settings.season, settings);
     case 'mfl':
-      return fetchMflLeague(cfg, settings.season, { apiKey: settings.mflApiKey, cookie: settings.mflCookie }, store);
+      return fetchMflLeague(cfg, settings.season, { apiKey: settings.mflApiKey, cookie: settings.mflCookie, userAgent: settings.mflUserAgent }, store);
   }
 }
 

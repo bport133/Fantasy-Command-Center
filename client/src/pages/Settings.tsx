@@ -167,6 +167,12 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
 
       <div className="grid-2">
         <Section title="MFL">
+          <Field
+            label="Registered API client name"
+            help="The client name (User-Agent) from your MFL API client registration confirmation. Leave blank if you haven't registered. Click Save after changing it."
+          >
+            <input placeholder="F2-Command-Center" value={draft.mflUserAgent ?? ''} onChange={(e) => set('mflUserAgent', e.target.value)} />
+          </Field>
           <MflSignIn
             settings={draft}
             onChange={(saved) => setDraft({ ...draft, mflUsername: saved.mflUsername, secretsSet: saved.secretsSet })}

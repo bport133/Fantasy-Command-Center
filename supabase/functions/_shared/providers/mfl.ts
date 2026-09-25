@@ -41,11 +41,15 @@ async function loadMflPlayers(store: Store, host: string, season: number, apiKey
   return players;
 }
 
+export const DEFAULT_MFL_USER_AGENT = 'F2-Command-Center';
+
 export interface MflAuth {
   /** Per-league owner key from MFL's Help → Developer's API page. */
   apiKey: string;
   /** MFL_USER_ID cookie value from mflLogin(). */
   cookie: string;
+  /** Registered MFL API client name, sent as the User-Agent. */
+  userAgent?: string;
 }
 
 /** Cookie header for MFL. The value is Base64, so + / = must be URL-escaped. */
@@ -57,13 +61,19 @@ export function mflCookieHeader(cookie: string): Record<string, string> {
  * Signs in to MFL with a username and password and returns the MFL_USER_ID cookie value.
  * Only the cookie is kept; the password is never stored.
  */
-export async function mflLogin(season: number, username: string, password: string, fetchImpl = fetch): Promise<string> {
+export async function mflLogin(
+  season: number,
+  username: string,
+  password: string,
+  fetchImpl = fetch,
+  userAgent = DEFAULT_MFL_USER_AGENT,
+): Promise<string> {
   if (!username.trim() || !password) throw new Error('Enter your MFL username and password');
   let res: Response;
   try {
     res = await fetchImpl(`https://api.myfantasyleague.com/${season}/login`, {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'F2-Command-Center' },
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': userAgent || DEFAULT_MFL_USER_AGENT },
       body: new URLSearchParams({ USERNAME: username.trim(), PASSWORD: password, XML: '1' }),
       signal: AbortSignal.timeout(20000),
     });
@@ -87,7 +97,10 @@ export async function fetchMflLeague(
   const { apiKey } = auth;
   // Every MFL request carries the login cookie when there is one (the API key, when set, wins).
   const fetchJson: typeof getJson = (url, init = {}) =>
-    baseFetch(url, { ...init, headers: { ...init.headers, ...mflCookieHeader(auth.cookie) } });
+    baseFetch(url, {
+      ...init,
+      headers: { ...init.headers, 'user-agent': auth.userAgent || DEFAULT_MFL_USER_AGENT, ...mflCookieHeader(auth.cookie) },
+    });
   const host = mflHost(cfg.host);
   const base: Record<string, string> = { L: cfg.leagueId };
   if (apiKey) base.APIKEY = apiKey;

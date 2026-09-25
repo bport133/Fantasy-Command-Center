@@ -55,7 +55,7 @@ export async function handle(req: Request, deps: AppDeps): Promise<Response> {
         // The password goes to MFL once and is dropped; only MFL's session cookie is kept.
         const { username, password } = (await req.json()) ?? {};
         const settings = await loadSettings(store);
-        const cookie = await mflLogin(settings.season, String(username ?? ''), String(password ?? ''));
+        const cookie = await mflLogin(settings.season, String(username ?? ''), String(password ?? ''), fetch, settings.mflUserAgent);
         const next = { ...settings, mflCookie: cookie, mflUsername: String(username).trim() };
         await store.set('settings', next);
         return json(publicSettings(next));

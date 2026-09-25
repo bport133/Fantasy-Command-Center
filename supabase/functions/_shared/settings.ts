@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mflApiKey: '',
   mflCookie: '',
   mflUsername: '',
+  mflUserAgent: '',
   mflSalaryCap: 200000,
   mflContractYearCap: 72,
   projectionYears: 5,

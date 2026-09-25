@@ -25,6 +25,8 @@ export interface Settings {
   mflCookie: string;
   /** Username the MFL cookie belongs to, shown in Settings. */
   mflUsername: string;
+  /** Client name registered with MFL, sent as the User-Agent on every MFL request. */
+  mflUserAgent: string;
   mflSalaryCap: number;
   mflContractYearCap: number;
   projectionYears: number;

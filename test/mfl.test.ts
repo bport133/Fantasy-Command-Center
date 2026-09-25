@@ -226,6 +226,28 @@ describe('MFL sign-in', () => {
     );
     expect(headers.length).toBeGreaterThan(10);
     expect(headers.every((h) => h.cookie === 'MFL_USER_ID=abc%3D')).toBe(true);
+    expect(headers.every((h) => h['user-agent'] === 'F2-Command-Center')).toBe(true);
+  });
+
+  it('identifies itself with the registered MFL client name', async () => {
+    const agents = new Set<string>();
+    await fetchMflLeague(
+      { id: 'm', platform: 'mfl', leagueId: '1', myTeam: '0001', host: 'www42.myfantasyleague.com' },
+      2026,
+      { apiKey: '', cookie: '', userAgent: 'TonyDynastyApp' },
+      memoryStore(),
+      (async (_url: string, init: { headers?: Record<string, string> } = {}) => {
+        agents.add(init.headers?.['user-agent'] ?? '');
+        return {};
+      }) as any,
+    );
+    expect([...agents]).toEqual(['TonyDynastyApp']);
+    let sent = '';
+    await mflLogin(2026, 'tony', 'pw', (async (_u: string, init: RequestInit) => {
+      sent = (init.headers as Record<string, string>)['user-agent'];
+      return new Response('<status MFL_USER_ID="x">OK</status>');
+    }) as unknown as typeof fetch, 'TonyDynastyApp');
+    expect(sent).toBe('TonyDynastyApp');
   });
 
   it('never lets the browser set the MFL cookie directly', () => {
