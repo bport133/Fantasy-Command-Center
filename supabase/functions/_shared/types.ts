@@ -9,6 +9,31 @@ export interface Member {
   addedAt: string;
 }
 export type Position = 'QB' | 'RB' | 'WR' | 'TE';
+
+export type LeagueFormat = 'redraft' | 'keeper' | 'dynasty';
+export const LEAGUE_FORMATS: LeagueFormat[] = ['redraft', 'keeper', 'dynasty'];
+
+/** FantasyPros consensus ranking sets. */
+export type RankingType = 'draft' | 'weekly' | 'ros' | 'dynasty' | 'rookies';
+export const RANKING_TYPES: RankingType[] = ['draft', 'weekly', 'ros', 'dynasty', 'rookies'];
+export const RANKING_LABELS: Record<RankingType, string> = {
+  draft: 'Draft (preseason)',
+  weekly: 'Weekly',
+  ros: 'Rest of season',
+  dynasty: 'Dynasty',
+  rookies: 'Dynasty rookies',
+};
+
+export type Scoring = 'PPR' | 'HALF' | 'STD';
+export const SCORINGS: Scoring[] = ['PPR', 'HALF', 'STD'];
+
+/** Current NFL calendar position (from Sleeper). */
+export interface NflState {
+  season: number;
+  week: number;
+  /** 'pre' | 'regular' | 'post' | 'off' */
+  seasonType: string;
+}
 export const POSITIONS: Position[] = ['QB', 'RB', 'WR', 'TE'];
 
 export interface LeagueConfig {
@@ -20,6 +45,14 @@ export interface LeagueConfig {
   myTeam: string;
   /** MFL only: the www##.myfantasyleague.com host for the league. */
   host?: string;
+  /** How the league carries rosters between seasons. Missing = dynasty (the original behavior). */
+  format?: LeagueFormat;
+  /** Keeper leagues: how many players each team keeps. */
+  keepers?: number;
+  /** Rankings used to value players; 'auto' picks by format and time of year. */
+  rankings?: RankingType | 'auto';
+  /** Scoring for the rankings; 'default' uses the FantasyPros default in Settings. */
+  scoring?: Scoring | 'default';
 }
 
 export interface Settings {
@@ -42,8 +75,12 @@ export interface Settings {
   alertWebhookUrl: string;
   autoRefreshMinutes: number;
   fpApiKey: string;
-  fpType: string;
+  /** Legacy single ranking type (before per-league formats); read only for old settings. */
+  fpType?: string;
+  /** Default scoring for FantasyPros rankings. */
   fpScoring: string;
+  /** FantasyPros ranking sets to load and show, besides the ones leagues need. */
+  fpTypes: RankingType[];
 }
 
 /** Settings as sent to the browser: secrets are replaced by a flag saying whether they are set. */
@@ -178,6 +215,8 @@ export interface PlayerInfo {
 // ---- Computed views ----
 
 export interface EnrichedPlayer extends RosterPlayer {
+  /** Keeper leagues: one of this team's best keepers by long-term value. */
+  keeper?: boolean;
   injury?: string;
   ytdPoints?: number;
   age?: number;
@@ -190,6 +229,9 @@ export interface EnrichedPlayer extends RosterPlayer {
 export interface LeagueSummary {
   configId: string;
   platform: Platform;
+  format: LeagueFormat;
+  /** e.g. "Rest of season · PPR" */
+  rankingLabel: string;
   name: string;
   myTeam: string | null;
   record?: string;
@@ -251,6 +293,7 @@ export interface PickRow {
 export interface PicksLeague {
   configId: string;
   league: string;
+  format: LeagueFormat;
   supported: boolean;
   picks: PickRow[];
 }
@@ -384,10 +427,72 @@ export interface Alert {
 export interface RosterGroup {
   configId: string;
   platform: Platform;
+  format: LeagueFormat;
+  rankingLabel: string;
+  /** Keeper leagues: players to keep, best first (by dynasty value). */
+  keeperPlan?: { keepers: number; players: { name: string; pos: string; rank?: number; value: number }[]; basis: string };
   league: string;
   team: string;
   hasContracts: boolean;
   players: EnrichedPlayer[];
+}
+
+export interface RankingSet {
+  type: RankingType;
+  scoring: Scoring;
+  label: string;
+  source: string;
+  at: string;
+  players: (FPPlayer & { value: number })[];
+}
+
+export interface ProjectedPlayer {
+  name: string;
+  key: string;
+  pos: string;
+  team: string;
+  points: number;
+}
+
+export interface ProjectionSet {
+  week: number;
+  scoring: Scoring;
+  at: string;
+  players: ProjectedPlayer[];
+}
+
+export interface NewsItem {
+  title: string;
+  description?: string;
+  player?: string;
+  team?: string;
+  time?: string;
+  url?: string;
+  impact?: string;
+  mine: boolean;
+}
+
+export interface DfsPlayer {
+  id: string;
+  name: string;
+  key: string;
+  pos: string;
+  team: string;
+  opp: string;
+  game: string;
+  salary: number;
+  fppg: number;
+  injury: string;
+  /** FantasyPros half-PPR projection when available, otherwise FanDuel's FPPG. */
+  projection: number;
+  projectionSource: 'FantasyPros' | 'FanDuel FPPG';
+}
+
+export interface DfsSlate {
+  uploadedAt: string;
+  games: string[];
+  projectionNote: string;
+  players: DfsPlayer[];
 }
 
 export interface SourceStatus {
@@ -403,7 +508,7 @@ export interface Snapshot {
   leagues: LeagueSummary[];
   rosters: RosterGroup[];
   freeAgents: FreeAgentRow[];
-  teamValues: { configId: string; league: string; rows: TeamValueRow[] }[];
+  teamValues: { configId: string; league: string; rankingLabel: string; rows: TeamValueRow[] }[];
   tradeFinder: TradeFinderLeague[];
   picks: PicksLeague[];
   mflCap: MflCapView[];
@@ -411,7 +516,15 @@ export interface Snapshot {
   mflLeague: MflLeagueView[];
   watchlist: WatchRow[];
   alerts: Alert[];
+  /** Default ranking set (for name suggestions and the watchlist). */
   rankings: (FPPlayer & { value: number })[];
+  /** Every FantasyPros ranking set loaded, for the FantasyPros page. */
+  rankingSets: RankingSet[];
+  projections: ProjectionSet | null;
+  news: NewsItem[];
+  nflState: NflState | null;
+  /** FanDuel slate with projections merged in; lineups are optimized in the browser. */
+  dfs: DfsSlate | null;
   /** Team choices per league, for the "my team" dropdown in Settings. */
   teamChoices: Record<string, { id: string; name: string }[]>;
 }

@@ -1,20 +1,21 @@
 // FantasyPros consensus rankings: the API (needs a key) or a CSV exported from the site.
 
-import type { FPPlayer } from '../types.ts';
+import type { FPPlayer, NewsItem, ProjectedPlayer } from '../types.ts';
 import { getJson } from '../http.ts';
 import { basePosition, normalizeName } from '../names.ts';
 
 const FANTASY_POS = new Set(['QB', 'RB', 'WR', 'TE']);
 
 export async function fetchFantasyProsRankings(
-  opts: { apiKey: string; season: number; type: string; scoring: string },
+  opts: { apiKey: string; season: number; type: string; scoring: string; week?: number },
   fetchJson = getJson,
 ): Promise<FPPlayer[]> {
   const q = new URLSearchParams({
     type: opts.type || 'dynasty',
     scoring: (opts.scoring || 'PPR').toUpperCase(),
     position: 'ALL',
-    week: '0',
+    // Weekly rankings are for a specific week; the season-long sets use week 0.
+    week: opts.type === 'weekly' && opts.week ? String(opts.week) : '0',
   });
   const url = `https://api.fantasypros.com/public/v2/json/nfl/${opts.season}/consensus-rankings?${q}`;
   const data = await fetchJson(url, { label: 'FantasyPros', headers: { 'x-api-key': opts.apiKey } });
@@ -133,4 +134,64 @@ export function parseCsv(text: string): string[][] {
     rows.push(row);
   }
   return rows.filter((r) => r.some((c) => c.trim()));
+}
+
+const PROJECTION_POS = new Set(['QB', 'RB', 'WR', 'TE', 'K', 'DST']);
+
+/**
+ * Weekly fantasy-point projections. FanDuel scores half-PPR, so DFS uses scoring=HALF.
+ * The response has varied over API versions, so points are read from any of the usual fields.
+ */
+export async function fetchFantasyProsProjections(
+  opts: { apiKey: string; season: number; week: number; scoring: string },
+  fetchJson = getJson,
+): Promise<ProjectedPlayer[]> {
+  const q = new URLSearchParams({ position: 'ALL', week: String(opts.week), scoring: opts.scoring.toUpperCase() });
+  const url = `https://api.fantasypros.com/public/v2/json/nfl/${opts.season}/projections?${q}`;
+  const data = await fetchJson(url, { label: 'FantasyPros projections', headers: { 'x-api-key': opts.apiKey } });
+  const players = parseFantasyProsProjections(data);
+  if (!players.length) throw new Error('FantasyPros projections: no players in the response');
+  return players;
+}
+
+export function parseFantasyProsProjections(data: any): ProjectedPlayer[] {
+  const out: ProjectedPlayer[] = [];
+  for (const p of data?.players ?? []) {
+    const name = p.name ?? p.player_name;
+    const rawPos = String(p.position_id ?? p.player_position_id ?? p.position ?? '').toUpperCase();
+    const pos = rawPos === 'DEF' || rawPos === 'D' ? 'DST' : basePosition(rawPos);
+    const stats = p.stats ?? {};
+    const points = num(stats.points ?? stats.fpts ?? stats.FPTS ?? p.points ?? p.fpts ?? p.fantasy_points);
+    if (!name || !PROJECTION_POS.has(pos) || points === undefined) continue;
+    out.push({ name, key: normalizeName(name), pos, team: p.team_id ?? p.player_team_id ?? p.team ?? '', points: Math.round(points * 10) / 10 });
+  }
+  return out.sort((a, b) => b.points - a.points);
+}
+
+/** Latest NFL player news. */
+export async function fetchFantasyProsNews(opts: { apiKey: string }, fetchJson = getJson): Promise<Omit<NewsItem, 'mine'>[]> {
+  const url = 'https://api.fantasypros.com/public/v2/json/nfl/news?limit=100';
+  const data = await fetchJson(url, { label: 'FantasyPros news', headers: { 'x-api-key': opts.apiKey } });
+  return parseFantasyProsNews(data);
+}
+
+export function parseFantasyProsNews(data: any): Omit<NewsItem, 'mine'>[] {
+  const items = data?.items ?? data?.news ?? data?.articles ?? [];
+  const out: Omit<NewsItem, 'mine'>[] = [];
+  for (const n of items) {
+    const title = n.title ?? n.headline;
+    if (!title) continue;
+    const ts = n.updated ?? n.created ?? n.published ?? n.date;
+    const time = ts ? new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts).toISOString() : undefined;
+    out.push({
+      title: String(title),
+      description: n.desc ?? n.description ?? n.analysis ?? undefined,
+      player: n.player_name ?? n.player?.name ?? undefined,
+      team: n.team_id ?? n.team ?? undefined,
+      time: time && !time.startsWith('Invalid') ? time : undefined,
+      url: n.link ?? n.url ?? undefined,
+      impact: n.impact ?? undefined,
+    });
+  }
+  return out;
 }

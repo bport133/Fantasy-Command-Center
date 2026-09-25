@@ -8,11 +8,11 @@ import { ValueBar } from './Overview';
 export function TeamValuesPage({ snap }: { snap: Snapshot }) {
   return (
     <>
-      <PageHead title="📊 Dynasty Power Rankings" sub="Total FantasyPros dynasty value by team and position. Your team is highlighted." />
+      <PageHead title="📊 Power Rankings" sub="Total FantasyPros value by team and position, using each league's own rankings. Your team is highlighted." />
       {snap.teamValues.map((tv) => {
         const max = Math.max(...tv.rows.map((r) => r.total), 1);
         return (
-          <Section key={tv.configId} title={tv.league}>
+          <Section key={tv.configId} title={tv.league} aside={<span className="muted small">{tv.rankingLabel}</span>}>
             <Table
               rows={tv.rows}
               rowKey={(r) => r.teamId}
@@ -95,7 +95,9 @@ export function DraftPicksPage({ snap }: { snap: Snapshot }) {
       <div className="grid-3">
         {snap.picks.map((p) => (
           <Section key={p.configId} title={p.league}>
-            {!p.supported ? (
+            {p.format === 'redraft' ? (
+              <p className="empty">Redraft league: rosters reset every year, so there are no future picks to track.</p>
+            ) : !p.supported ? (
               <p className="empty">ESPN does not expose future rookie picks. Track these manually if needed.</p>
             ) : (
               <Table
@@ -156,38 +158,127 @@ export function AlertsPage({ snap, update }: { snap: Snapshot; update: Update })
   );
 }
 
+type FpView = { kind: 'set'; key: string } | { kind: 'projections' } | { kind: 'news' };
+
 export function RankingsPage({ snap }: { snap: Snapshot }) {
+  const sets = snap.rankingSets ?? [];
+  const setKey = (r: { type: string; scoring: string }) => `${r.type}:${r.scoring}`;
+  const [view, setView] = useState<FpView>(sets[0] ? { kind: 'set', key: setKey(sets[0]) } : { kind: 'projections' });
   const [pos, setPos] = useState<(typeof POS_FILTER)[number]['value']>('ALL');
   const [q, setQ] = useState('');
-  const rows = snap.rankings.filter(
-    (p) => (pos === 'ALL' || p.pos === pos) && (!q || p.name.toLowerCase().includes(q.toLowerCase())),
-  );
+  const [mineOnly, setMineOnly] = useState(false);
+  const match = (name: string, p: string) => (pos === 'ALL' || p === pos) && (!q || name.toLowerCase().includes(q.toLowerCase()));
+
+  const tabs = [
+    ...sets.map((r) => ({ value: `set:${setKey(r)}`, label: r.label })),
+    { value: 'projections', label: `Projections${snap.projections ? ` (wk ${snap.projections.week})` : ''}` },
+    { value: 'news', label: 'News' },
+  ];
+  const current = view.kind === 'set' ? `set:${view.key}` : view.kind;
+  const onTab = (v: string) => setView(v.startsWith('set:') ? { kind: 'set', key: v.slice(4) } : ({ kind: v } as FpView));
+  const set = view.kind === 'set' ? sets.find((r) => setKey(r) === view.key) : undefined;
+  const news = snap.news ?? [];
+  const shownNews = news.filter((n) => !mineOnly || n.mine);
+
   return (
     <>
-      <PageHead title="🏆 FantasyPros Rankings" sub="Consensus rankings driving every value in the app." />
-      <div className="filters">
-        <Chips options={[...POS_FILTER]} value={pos} onChange={setPos} />
-        <input className="search" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
-      </div>
-      <Section title={`${rows.length} players`}>
-        <Table
-          rows={rows}
-          rowKey={(r) => r.key}
-          empty="No rankings loaded. Add a FantasyPros API key or import a CSV in Settings."
-          columns={[
-            { key: 'rank', label: 'RK', align: 'right' },
-            { key: 'tier', label: 'Tier', align: 'right' },
-            { key: 'name', label: 'Player' },
-            { key: 'nfl', label: 'Team' },
-            { key: 'pos', label: 'Pos', render: (r) => <PosBadge pos={r.pos} /> },
-            { key: 'age', label: 'Age', align: 'right' },
-            { key: 'best', label: 'Best', align: 'right' },
-            { key: 'worst', label: 'Worst', align: 'right' },
-            { key: 'avg', label: 'Avg', align: 'right' },
-            { key: 'value', label: 'Dyn Value', render: (r) => <ValueBar value={r.value} /> },
-          ]}
-        />
-      </Section>
+      <PageHead
+        title="🏆 FantasyPros"
+        sub={
+          <>
+            Consensus rankings, weekly projections and news. Each league uses the rankings for its format (Settings → Leagues).
+            {snap.nflState && ` NFL ${snap.nflState.season}, week ${snap.nflState.week}${snap.nflState.seasonType === 'pre' ? ' (preseason)' : ''}.`}
+          </>
+        }
+      />
+      <Chips options={tabs} value={current} onChange={onTab} />
+      {view.kind !== 'news' && (
+        <div className="filters">
+          <Chips options={[...POS_FILTER]} value={pos} onChange={setPos} />
+          <input className="search" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+      )}
+
+      {view.kind === 'set' && (
+        <Section
+          title={set ? `${set.label} · ${set.players.filter((p) => match(p.name, p.pos)).length} players` : 'Not loaded'}
+          aside={set && <span className="muted small">{set.source} · updated {new Date(set.at).toLocaleString()}</span>}
+        >
+          <Table
+            rows={(set?.players ?? []).filter((p) => match(p.name, p.pos))}
+            rowKey={(r) => r.key}
+            empty="No rankings loaded for this set. Add a FantasyPros API key or import a CSV in Settings."
+            columns={[
+              { key: 'rank', label: 'RK', align: 'right' },
+              { key: 'tier', label: 'Tier', align: 'right' },
+              { key: 'name', label: 'Player' },
+              { key: 'nfl', label: 'Team' },
+              { key: 'pos', label: 'Pos', render: (r) => <PosBadge pos={r.pos} /> },
+              { key: 'age', label: 'Age', align: 'right' },
+              { key: 'best', label: 'Best', align: 'right' },
+              { key: 'worst', label: 'Worst', align: 'right' },
+              { key: 'avg', label: 'Avg', align: 'right' },
+              { key: 'value', label: 'Value', render: (r) => <ValueBar value={r.value} /> },
+            ]}
+          />
+        </Section>
+      )}
+
+      {view.kind === 'projections' && (
+        <Section
+          title={snap.projections ? `Week ${snap.projections.week} projections · half PPR` : 'Projections'}
+          aside={snap.projections && <span className="muted small">updated {new Date(snap.projections.at).toLocaleString()}</span>}
+        >
+          <Table
+            rows={(snap.projections?.players ?? []).filter((p) => match(p.name, p.pos === 'DST' ? 'DEF' : p.pos))}
+            rowKey={(r) => `${r.key}-${r.pos}`}
+            empty="Weekly projections need a FantasyPros API key (Settings)."
+            columns={[
+              { key: 'name', label: 'Player' },
+              { key: 'pos', label: 'Pos', render: (r) => <PosBadge pos={r.pos} /> },
+              { key: 'team', label: 'Team' },
+              { key: 'points', label: 'Proj pts', align: 'right', render: (r) => r.points.toFixed(1) },
+            ]}
+            initialSort={{ key: 'points', dir: -1 }}
+          />
+        </Section>
+      )}
+
+      {view.kind === 'news' && (
+        <Section
+          title="Player news"
+          aside={
+            <label className="toggle">
+              <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} /> My players only
+            </label>
+          }
+        >
+          {shownNews.length === 0 ? (
+            <p className="empty">{news.length ? 'No news about your players right now.' : 'News needs a FantasyPros API key (Settings).'}</p>
+          ) : (
+            <ul className="news">
+              {shownNews.map((n, i) => (
+                <li key={i} className={n.mine ? 'mine' : undefined}>
+                  <div className="news-head">
+                    <strong>
+                      {n.url ? (
+                        <a href={n.url} target="_blank" rel="noreferrer">
+                          {n.title}
+                        </a>
+                      ) : (
+                        n.title
+                      )}
+                    </strong>
+                    {n.mine && <span className="tag-fa">YOUR PLAYER</span>}
+                  </div>
+                  <div className="muted small">{[n.player, n.team, n.time && new Date(n.time).toLocaleString()].filter(Boolean).join(' · ')}</div>
+                  {n.description && <p className="small">{n.description}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
     </>
   );
 }

@@ -9,6 +9,17 @@ const BASE = 'https://proj.supabase.co/functions/v1/api';
 function fakeApis(url: string): unknown {
   const u = new URL(url);
   if (u.host === 'api.fantasypros.com') {
+    if (u.pathname.endsWith('/projections')) {
+      return {
+        players: [
+          { name: 'Joe Burrow', team_id: 'CIN', position_id: 'QB', stats: { points: 21.4 } },
+          { name: 'Bills', team_id: 'BUF', position_id: 'DST', stats: { points: 8 } },
+        ],
+      };
+    }
+    if (u.pathname.endsWith('/news')) {
+      return { items: [{ title: 'Burrow limited in practice', player_name: 'Joe Burrow', updated: '2026-09-24T12:00:00Z' }] };
+    }
     return {
       players: [
         { player_name: "Ja'Marr Chase", player_team_id: 'CIN', player_position_id: 'WR', rank_ecr: 1, tier: 1 },
@@ -20,6 +31,7 @@ function fakeApis(url: string): unknown {
   }
   if (u.host === 'api.sleeper.app') {
     const p = u.pathname;
+    if (p === '/v1/state/nfl') return { season: '2026', league_season: '2026', week: 3, display_week: 3, season_type: 'regular' };
     if (p === '/v1/players/nfl') {
       return {
         '1': { full_name: "Ja'Marr Chase", position: 'WR', team: 'CIN', birth_date: '2000-03-01', years_exp: 5 },

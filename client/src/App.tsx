@@ -7,6 +7,7 @@ import { MflCapPage, MflExpiringPage } from './pages/Mfl';
 import { MflLeaguePage } from './pages/MflLeague';
 import { DashboardPage, FreeAgentsPage, RostersPage, WatchlistPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
+import { DfsPage } from './pages/Dfs';
 import { MembersPage } from './pages/Members';
 import { configured, supabase } from './supabase';
 import { ago } from './ui';
@@ -23,7 +24,8 @@ const TABS = [
   { id: 'trade-finder', icon: '🤝', label: 'Trade Finder' },
   { id: 'draft-picks', icon: '🎯', label: 'Draft Picks' },
   { id: 'alerts', icon: '🔔', label: 'Alerts' },
-  { id: 'rankings', icon: '🏆', label: 'FP Rankings' },
+  { id: 'dfs', icon: '💵', label: 'FanDuel DFS' },
+  { id: 'rankings', icon: '🏆', label: 'FantasyPros' },
   { id: 'settings', icon: '⚙️', label: 'Settings' },
   { id: 'members', icon: '👥', label: 'Members' },
 ] as const;
@@ -212,7 +214,7 @@ function Page({
   refresh: () => void;
   isOwner: boolean;
 }) {
-  const needsSetup = snap.leagues.length === 0 && snap.fpCount === 0 && tab !== 'settings' && tab !== 'members';
+  const needsSetup = snap.leagues.length === 0 && snap.fpCount === 0 && !['settings', 'members', 'dfs'].includes(tab);
   if (needsSetup) {
     return (
       <div className="card onboarding">
@@ -248,6 +250,8 @@ function Page({
       return <AlertsPage snap={snap} update={update} />;
     case 'rankings':
       return <RankingsPage snap={snap} />;
+    case 'dfs':
+      return <DfsPage snap={snap} update={update} />;
     case 'settings':
       return <SettingsPage snap={snap} update={update} refresh={refresh} />;
     case 'members':

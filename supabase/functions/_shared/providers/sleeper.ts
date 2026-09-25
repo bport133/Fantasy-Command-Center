@@ -1,6 +1,6 @@
 // Sleeper public API (no auth): https://docs.sleeper.com
 
-import type { DraftPick, LeagueConfig, LeagueData, PlayerInfo, RosterPlayer, Slot, Team } from '../types.ts';
+import type { DraftPick, LeagueConfig, LeagueData, NflState, PlayerInfo, RosterPlayer, Slot, Team } from '../types.ts';
 import { getJson } from '../http.ts';
 import { normalizeName } from '../names.ts';
 import type { Store } from '../store.ts';
@@ -152,4 +152,14 @@ export function parseSleeperLeague(
   }
 
   return { configId: cfg.id, platform: 'sleeper', name: league.name ?? 'Sleeper league', season, teams, picks };
+}
+
+/** Current NFL season, week and phase (Sleeper's public state endpoint). */
+export async function fetchNflState(fetchJson = getJson): Promise<NflState> {
+  const s = await fetchJson(`${BASE}/state/nfl`, { label: 'NFL state' });
+  return {
+    season: Number(s?.league_season ?? s?.season) || new Date().getFullYear(),
+    week: Math.max(1, Number(s?.display_week ?? s?.week) || 1),
+    seasonType: String(s?.season_type ?? 'regular'),
+  };
 }

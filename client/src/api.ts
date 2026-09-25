@@ -30,6 +30,8 @@ export const api = {
   mflLogin: (username: string, password: string) => call<PublicSettings>('POST', '/mfl/login', { username, password }),
   watchlist: () => call<string[]>('GET', '/watchlist'),
   saveWatchlist: (names: string[]) => call<Snapshot>('PUT', '/watchlist', names),
-  importCsv: (csv: string) => call<Snapshot>('POST', '/rankings/csv', csv, 'text/csv'),
+  importCsv: (csv: string, type = 'dynasty') => call<Snapshot>('POST', `/rankings/csv?type=${type}`, csv, 'text/csv'),
+  uploadDfsSlate: (csv: string) => call<Snapshot>('POST', '/dfs/slate', csv, 'text/csv'),
+  clearDfsSlate: () => call<Snapshot>('DELETE', '/dfs/slate'),
   clearAlerts: () => call<Snapshot>('DELETE', '/alerts'),
 };

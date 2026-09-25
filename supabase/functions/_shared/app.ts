@@ -7,10 +7,10 @@
 
 import { parseFantasyProsCsv } from './providers/fantasypros.ts';
 import { mflLogin } from './providers/mfl.ts';
-import { EMPTY_SNAPSHOT, loadWatchlist, refresh, refreshDue, saveRankings, saveWatchlist } from './refresh.ts';
+import { EMPTY_SNAPSHOT, loadWatchlist, refresh, refreshDue, saveDfsSlate, saveRankings, saveWatchlist } from './refresh.ts';
 import { loadSettings, mergeSettings, publicSettings } from './settings.ts';
 import type { Store } from './store.ts';
-import type { Member, Snapshot } from './types.ts';
+import { RANKING_TYPES, type Member, type RankingType, type Scoring, type Snapshot } from './types.ts';
 
 export interface AuthUser {
   id: string;
@@ -122,10 +122,20 @@ export async function handle(req: Request, deps: AppDeps): Promise<Response> {
         return json(await refresh(store, { ...opts, fetchRemote: false }));
       }
       case 'POST /rankings/csv': {
+        // ?type=ros|draft|weekly|dynasty|rookies (default dynasty), at the default scoring.
         const players = parseFantasyProsCsv(await req.text());
-        await saveRankings(store, 'CSV import', players);
+        const type = new URL(req.url).searchParams.get('type') as RankingType | null;
+        const settings = await loadSettings(store);
+        const choice = { type: type && RANKING_TYPES.includes(type) ? type : 'dynasty', scoring: settings.fpScoring as Scoring };
+        await saveRankings(store, 'CSV import', players, choice);
         return json(await refresh(store, { ...opts, fetchRemote: false }));
       }
+      case 'POST /dfs/slate':
+        await saveDfsSlate(store, await req.text());
+        return json(await refresh(store, { ...opts, fetchRemote: false }));
+      case 'DELETE /dfs/slate':
+        await store.set('dfs-slate', null);
+        return json(await refresh(store, { ...opts, fetchRemote: false }));
       case 'DELETE /alerts':
         await store.set('alerts', []);
         return json(await refresh(store, { ...opts, fetchRemote: false }));

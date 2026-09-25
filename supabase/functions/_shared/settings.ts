@@ -1,6 +1,9 @@
 // Settings defaults, merging updates from the browser, and hiding secrets from it.
 
 import {
+  LEAGUE_FORMATS,
+  RANKING_TYPES,
+  SCORINGS,
   SECRET_KEYS,
   type PublicSettings,
   type SecretKey,
@@ -25,12 +28,17 @@ export const DEFAULT_SETTINGS: Settings = {
   alertWebhookUrl: '',
   autoRefreshMinutes: 60,
   fpApiKey: '',
-  fpType: 'dynasty',
   fpScoring: 'PPR',
+  fpTypes: ['draft', 'weekly', 'ros', 'dynasty', 'rookies'],
 };
 
 export async function loadSettings(store: Store): Promise<Settings> {
-  return { ...DEFAULT_SETTINGS, ...(await store.get<Partial<Settings>>('settings', {})) };
+  const saved = await store.get<Partial<Settings> | null>('settings', {});
+  const s: Settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+  // Leagues saved before formats existed were all valued as dynasty.
+  s.leagues = s.leagues.map((l) => ({ format: 'dynasty', rankings: 'auto', scoring: 'default', ...l }));
+  if (!SCORINGS.includes(s.fpScoring as never)) s.fpScoring = 'PPR';
+  return s;
 }
 
 export function publicSettings(s: Settings): PublicSettings {
@@ -52,6 +60,11 @@ const NUMERIC: (keyof Settings)[] = [
   'alertTopN',
   'autoRefreshMinutes',
 ];
+
+const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
 
 /** Set only by the server (MFL sign-in), never from a settings form. */
 const SERVER_ONLY: (keyof Settings)[] = ['mflCookie', 'mflUsername'];
@@ -81,7 +94,13 @@ export function mergeSettings(
           leagueId: String(l.leagueId ?? '').trim(),
           myTeam: String(l.myTeam ?? '').trim(),
           ...(l.platform === 'mfl' ? { host: String(l.host ?? '').trim() } : {}),
+          format: LEAGUE_FORMATS.includes(l.format) ? l.format : 'dynasty',
+          ...(l.format === 'keeper' ? { keepers: clampInt(l.keepers, 1, 25, 3) } : {}),
+          rankings: RANKING_TYPES.includes(l.rankings) ? l.rankings : 'auto',
+          scoring: SCORINGS.includes(l.scoring) ? l.scoring : 'default',
         }));
+    } else if (k === 'fpTypes' && Array.isArray(v)) {
+      next.fpTypes = RANKING_TYPES.filter((t) => v.includes(t));
     } else if (typeof v === 'string') {
       (next as any)[k] = v.trim();
     }

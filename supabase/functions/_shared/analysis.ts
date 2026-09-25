@@ -35,6 +35,10 @@ export interface Context {
   fp: Map<string, FPPlayer>;
   info: Map<string, PlayerInfo>;
   watch: Set<string>;
+  /** e.g. "Dynasty · PPR": which rankings this context values players with. */
+  rankingLabel?: string;
+  /** Keeper leagues: long-term (dynasty) rankings used to pick keepers. */
+  longTerm?: Map<string, FPPlayer>;
 }
 
 export function makeContext(
@@ -42,14 +46,19 @@ export function makeContext(
   fpList: FPPlayer[],
   info: Map<string, PlayerInfo>,
   watchlist: string[],
+  extra: { rankingLabel?: string; longTerm?: FPPlayer[] } = {},
 ): Context {
   return {
     settings,
     fp: new Map(fpList.map((p) => [p.key, p])),
     info,
     watch: new Set(watchlist.map(normalizeName)),
+    rankingLabel: extra.rankingLabel,
+    longTerm: extra.longTerm ? new Map(extra.longTerm.map((p) => [p.key, p])) : undefined,
   };
 }
+
+const formatOf = (ctx: Context, configId: string) => ctx.settings.leagues.find((l) => l.id === configId)?.format ?? 'dynasty';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -89,9 +98,15 @@ export function rosterGroups(ctx: Context, leagues: LeagueData[]): RosterGroup[]
     const cfg = ctx.settings.leagues.find((l) => l.id === league.configId);
     const mine = cfg && findMyTeam(league, cfg.myTeam);
     if (!mine) continue;
+    const format = formatOf(ctx, league.configId);
+    const keeperPlan = format === 'keeper' ? planKeepers(ctx, mine, cfg?.keepers ?? 3) : undefined;
+    const keep = new Set(keeperPlan?.players.map((p) => p.name));
     out.push({
       configId: league.configId,
       platform: league.platform,
+      format,
+      rankingLabel: ctx.rankingLabel ?? '',
+      keeperPlan,
       league: league.name,
       team: mine.name,
       hasContracts: league.platform === 'mfl',
@@ -101,12 +116,30 @@ export function rosterGroups(ctx: Context, leagues: LeagueData[]): RosterGroup[]
           const inj = p.id ? league.mfl?.injuries[p.id] : undefined;
           if (inj) e.injury = [inj.status, inj.details].filter(Boolean).join(' – ');
           if (p.id && league.mfl?.ytdPoints[p.id] !== undefined) e.ytdPoints = league.mfl.ytdPoints[p.id];
+          if (keep.has(p.name)) e.keeper = true;
           return e;
         })
         .sort(byValue),
     });
   }
   return out;
+}
+
+/**
+ * Keepers: the N players with the best long-term value (dynasty rankings when loaded, since a
+ * keeper is chosen for next season and beyond), falling back to the league's own rankings.
+ */
+export function planKeepers(ctx: Context, team: Team, keepers: number): NonNullable<RosterGroup['keeperPlan']> {
+  const source = ctx.longTerm && ctx.longTerm.size ? ctx.longTerm : ctx.fp;
+  const players = team.players
+    .map((p) => {
+      const rank = source.get(p.key)?.rank;
+      return { name: p.name, pos: p.pos, rank, value: dynastyValue(rank) };
+    })
+    .filter((p) => p.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, keepers);
+  return { keepers, players, basis: source === ctx.longTerm ? 'dynasty rankings (long-term value)' : 'this league\'s rankings' };
 }
 
 export function teamValues(ctx: Context, league: LeagueData): TeamValueRow[] {
@@ -145,8 +178,10 @@ export function leagueSummaries(
   return ctx.settings.leagues.map((cfg) => {
     const league = leagues.find((l) => l.configId === cfg.id);
     const platformName = { sleeper: 'Sleeper', espn: 'ESPN', mfl: 'MFL' }[cfg.platform];
+    const common = { format: cfg.format ?? 'dynasty', rankingLabel: ctx.rankingLabel ?? '' } as const;
     if (!league) {
       return {
+        ...common,
         configId: cfg.id,
         platform: cfg.platform,
         name: `${platformName} ${cfg.leagueId}`,
@@ -161,6 +196,7 @@ export function leagueSummaries(
     const values = teamValues(ctx, league);
     const me = values.find((r) => r.mine);
     return {
+      ...common,
       configId: cfg.id,
       platform: cfg.platform,
       name: league.name,
@@ -289,7 +325,7 @@ export function tradeFinder(ctx: Context, league: LeagueData): TradeFinderLeague
 // ---------- Draft picks ----------
 
 export function draftPicks(ctx: Context, league: LeagueData): PicksLeague {
-  const base = { configId: league.configId, league: league.name };
+  const base = { configId: league.configId, league: league.name, format: formatOf(ctx, league.configId) };
   const cfg = ctx.settings.leagues.find((l) => l.id === league.configId);
   const mine = cfg ? findMyTeam(league, cfg.myTeam) : null;
   if (!league.picks) return { ...base, supported: false, picks: [] };

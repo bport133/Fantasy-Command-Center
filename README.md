@@ -20,10 +20,18 @@ database and hourly refresh run on **Supabase**. There's nothing to install.
 | 🤝 Trade Finder | Teams whose surplus position matches your need and vice versa, with targets and offers |
 | 🎯 Draft Picks | Future picks you own, picks you acquired, and your picks other teams hold (Sleeper and MFL) |
 | 🔔 Alerts | Top-N ranked or watchlisted players dropped between refreshes, optionally pushed to Discord or Slack |
-| 🏆 FP Rankings | The full consensus rankings driving the values |
+| 💵 FanDuel DFS | Upload a FanDuel players list, get the optimal lineup plus alternates under the $60k cap (locks, exclusions, injuries), FantasyPros half-PPR projections, and a CSV to upload back to FanDuel |
+| 🏆 FantasyPros | Every consensus ranking set (draft, weekly, rest of season, dynasty, rookies), weekly projections and player news |
 | ⚙️ Settings | Leagues, credentials, FantasyPros options, cap settings and alert settings |
 
-Dynasty value uses the spreadsheet's curve: `10000 × e^(−(rank−1)/75)`.
+**League formats.** Each league is set to Redraft, Keeper or Dynasty (Settings → Leagues), which picks
+the rankings its players are valued with: Dynasty uses dynasty rankings; Redraft and Keeper use draft
+rankings before the season and rest-of-season rankings during it. Keeper leagues also get a keeper
+planner that picks your best N keepers by long-term (dynasty) value. Any league can override the
+rankings and scoring. FanDuel has no public API, so DFS works from the players-list CSV FanDuel lets
+you download from each contest.
+
+Player value uses the spreadsheet's curve: `10000 × e^(−(rank−1)/75)`.
 
 ## Setup (all in your browser, about 15 minutes)
 

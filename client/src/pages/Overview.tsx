@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { EnrichedPlayer, FreeAgentRow, Snapshot } from '@shared/types.ts';
 import { api } from '../api';
+import { FORMAT_LABELS } from '@shared/formats.ts';
 import type { Update } from '../App';
 import { Chips, fmt, money, PageHead, PlatformBadge, POS_FILTER, PosBadge, Section, Table, type Column } from '../ui';
 
@@ -22,7 +23,9 @@ export function DashboardPage({ snap }: { snap: Snapshot }) {
         {snap.leagues.map((l) => (
           <div className="kpi" key={l.configId}>
             <div className="kpi-top">
-              <PlatformBadge platform={l.platform} />
+              <span>
+                <PlatformBadge platform={l.platform} /> <span className="fmt">{FORMAT_LABELS[l.format ?? 'dynasty']}</span>
+              </span>
               <span className="muted small">{l.record ?? ''}</span>
             </div>
             <div className="kpi-name">{l.name}</div>
@@ -30,7 +33,7 @@ export function DashboardPage({ snap }: { snap: Snapshot }) {
               {l.valueRank ? (
                 <>
                   #{l.valueRank}
-                  <span className="muted small"> of {l.teamCount} in dynasty value</span>
+                  <span className="muted small"> of {l.teamCount} in team value</span>
                 </>
               ) : (
                 <span className="small">{l.status}</span>
@@ -112,19 +115,19 @@ export function RostersPage({ snap }: { snap: Snapshot }) {
   const [pos, setPos] = useState<Pos>('ALL');
   return (
     <>
-      <PageHead title="📋 My Rosters — All Leagues" sub="Sorted by dynasty value. Rank and tier come from FantasyPros." />
+      <PageHead title="📋 My Rosters — All Leagues" sub="Sorted by value, using each league's own FantasyPros rankings (set per league in Settings)." />
       <Chips options={[...POS_FILTER]} value={pos} onChange={setPos} />
       {snap.rosters.length === 0 && <p className="empty">No rosters yet. Pick your team for each league in Settings.</p>}
       {snap.rosters.map((g) => {
         const cols: Column<EnrichedPlayer>[] = [
-          { key: 'name', label: 'Player' },
+          { key: 'name', label: 'Player', render: (r) => <>{r.name}{r.keeper && <span className="keep">KEEP</span>}</> },
           { key: 'pos', label: 'Pos', render: (r) => <PosBadge pos={r.pos} /> },
           { key: 'nfl', label: 'NFL' },
           { key: 'age', label: 'Age', align: 'right' },
           { key: 'yearsExp', label: 'Yrs exp', align: 'right' },
           { key: 'rank', label: 'FP Rank', align: 'right' },
           { key: 'tier', label: 'Tier', align: 'right' },
-          { key: 'value', label: 'Dyn Value', align: 'right', render: (r) => <ValueBar value={r.value} /> },
+          { key: 'value', label: 'Value', align: 'right', render: (r) => <ValueBar value={r.value} /> },
           { key: 'slot', label: 'Status' },
         ];
         if (g.hasContracts) {
@@ -142,11 +145,24 @@ export function RostersPage({ snap }: { snap: Snapshot }) {
             key={g.configId}
             title={
               <>
-                <PlatformBadge platform={g.platform} /> {g.league} — {g.team}
+                <PlatformBadge platform={g.platform} /> <span className="fmt">{FORMAT_LABELS[g.format ?? 'dynasty']}</span> {g.league} — {g.team}
               </>
             }
-            aside={<span className="muted">Total value {total.toLocaleString()}</span>}
+            aside={
+              <span className="muted small">
+                {g.rankingLabel} · total value {total.toLocaleString()}
+              </span>
+            }
           >
+            {g.keeperPlan && (
+              <div className="keeper-plan">
+                <strong>Keeper plan ({g.keeperPlan.keepers}):</strong>{' '}
+                {g.keeperPlan.players.length
+                  ? g.keeperPlan.players.map((p, i) => `${i + 1}. ${p.name} (${p.pos}${p.rank ? ` #${p.rank}` : ''})`).join('   ')
+                  : 'No ranked players yet.'}
+                <span className="muted small"> · picked by {g.keeperPlan.basis}. Check your league's keeper cost rules.</span>
+              </div>
+            )}
             <Table rows={rows} columns={cols} rowKey={(r) => r.key} />
           </Section>
         );

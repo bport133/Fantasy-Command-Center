@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react';
-import type { LeagueConfig, Platform, PublicSettings, SecretKey, Settings, Snapshot } from '@shared/types.ts';
+import {
+  LEAGUE_FORMATS,
+  RANKING_LABELS,
+  RANKING_TYPES,
+  SCORINGS,
+  type LeagueConfig,
+  type LeagueFormat,
+  type Platform,
+  type PublicSettings,
+  type RankingType,
+  type SecretKey,
+  type Settings,
+  type Snapshot,
+} from '@shared/types.ts';
+import { FORMAT_LABELS } from '@shared/formats.ts';
 import { api } from '../api';
 import { supabase } from '../supabase';
 import type { Update } from '../App';
@@ -14,6 +28,7 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
   const [clear, setClear] = useState<SecretKey[]>([]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [csvType, setCsvType] = useState<RankingType>('dynasty');
 
   useEffect(() => {
     api.settings().then(setDraft, (e) => setMsg({ ok: false, text: e.message }));
@@ -68,8 +83,8 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
   const onCsv = async (file: File | undefined) => {
     if (!file) return;
     try {
-      update(await api.importCsv(await file.text()));
-      setMsg({ ok: true, text: `Imported rankings from ${file.name}.` });
+      update(await api.importCsv(await file.text(), csvType));
+      setMsg({ ok: true, text: `Imported ${RANKING_LABELS[csvType]} rankings from ${file.name}.` });
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     }
@@ -128,6 +143,45 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
                 <button className="link danger" onClick={() => set('leagues', draft.leagues.filter((x) => x.id !== l.id))}>
                   Remove
                 </button>
+                <div className="league-format">
+                  <Field label="Format" help={FORMAT_HELP[l.format ?? 'dynasty']}>
+                    <select
+                      value={l.format ?? 'dynasty'}
+                      onChange={(e) => setLeague(l.id, { format: e.target.value as LeagueFormat, ...(e.target.value === 'keeper' && !l.keepers ? { keepers: 3 } : {}) })}
+                    >
+                      {LEAGUE_FORMATS.map((f) => (
+                        <option key={f} value={f}>
+                          {FORMAT_LABELS[f]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {l.format === 'keeper' && (
+                    <Field label="Keepers per team">
+                      <input type="number" min={1} max={25} value={l.keepers ?? 3} onChange={(e) => setLeague(l.id, { keepers: Number(e.target.value) })} />
+                    </Field>
+                  )}
+                  <Field label="Rankings" help="Auto: dynasty → Dynasty; redraft/keeper → Draft before the season, Rest of season during it">
+                    <select value={l.rankings ?? 'auto'} onChange={(e) => setLeague(l.id, { rankings: e.target.value as LeagueConfig['rankings'] })}>
+                      <option value="auto">Auto (by format)</option>
+                      {RANKING_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {RANKING_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Scoring">
+                    <select value={l.scoring ?? 'default'} onChange={(e) => setLeague(l.id, { scoring: e.target.value as LeagueConfig['scoring'] })}>
+                      <option value="default">Default ({draft.fpScoring})</option>
+                      {SCORINGS.map((sc) => (
+                        <option key={sc} value={sc}>
+                          {SCORING_LABELS[sc]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
               </div>
             );
           })}
@@ -137,22 +191,47 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
       <div className="grid-2">
         <Section title="FantasyPros">
           {secret('fpApiKey', 'API key', <>From <a href="https://secure.fantasypros.com/api-keys/request" target="_blank" rel="noreferrer">secure.fantasypros.com/api-keys/request</a>. Leave blank to use a CSV import instead.</>)}
-          <Field label="Ranking type" help="dynasty, rookies, or draft">
-            <select value={draft.fpType} onChange={(e) => set('fpType', e.target.value)}>
-              {['dynasty', 'rookies', 'draft'].map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Scoring">
+          <Field label="Default scoring" help="Used by leagues set to Default scoring">
             <select value={draft.fpScoring} onChange={(e) => set('fpScoring', e.target.value)}>
-              {['PPR', 'HALF', 'STD'].map((t) => (
-                <option key={t}>{t}</option>
+              {SCORINGS.map((sc) => (
+                <option key={sc} value={sc}>
+                  {SCORING_LABELS[sc]}
+                </option>
               ))}
             </select>
           </Field>
-          <Field label="Import rankings CSV" help="Download from the FantasyPros dynasty rankings page (Download CSV). Used when there's no API key.">
-            <input type="file" accept=".csv,text/csv" onChange={(e) => onCsv(e.target.files?.[0])} />
+          <Field label="Rankings to load" help="Shown on the FantasyPros page. Rankings your leagues use are always loaded. Weekly projections and news load automatically with an API key.">
+            <div className="checks">
+              {RANKING_TYPES.map((t) => (
+                <label key={t} className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={draft.fpTypes.includes(t)}
+                    onChange={(e) => set('fpTypes', e.target.checked ? [...draft.fpTypes, t] : draft.fpTypes.filter((x) => x !== t))}
+                  />
+                  {RANKING_LABELS[t]}
+                </label>
+              ))}
+            </div>
+          </Field>
+          <Field label="Import rankings CSV" help="No API key? On FantasyPros, open the rankings you want, click Download CSV, pick the matching type here, then choose the file.">
+            <div className="row wrap">
+              <select value={csvType} onChange={(e) => setCsvType(e.target.value as RankingType)} style={{ maxWidth: 200 }}>
+                {RANKING_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {RANKING_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  onCsv(e.target.files?.[0]);
+                  e.target.value = ''; // so choosing the same file again (e.g. for another type) still imports
+                }}
+              />
+            </div>
           </Field>
         </Section>
 
@@ -316,6 +395,14 @@ function AccountSection() {
     </Section>
   );
 }
+
+const SCORING_LABELS: Record<string, string> = { PPR: 'PPR', HALF: 'Half PPR', STD: 'Standard' };
+
+const FORMAT_HELP: Record<LeagueFormat, string> = {
+  redraft: 'New team every year: values players for this season only',
+  keeper: 'Keep a few players each year: this season plus a keeper planner',
+  dynasty: 'Keep your whole roster: long-term dynasty values',
+};
 
 const LEAGUE_HELP: Record<Platform, string> = {
   sleeper: 'The long number in sleeper.com/leagues/<id>',
