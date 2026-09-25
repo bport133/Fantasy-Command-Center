@@ -83,6 +83,13 @@ async function fillMissingPlayers(
 
 export const DEFAULT_MFL_USER_AGENT = 'F2-Command-Center';
 
+/**
+ * League-independent requests (players, injuries, allRules, topAdds...) must go to MFL's main
+ * API host; MFL rejects them on a league's www## host ("This API request must go to
+ * api.myfantasyleague.com").
+ */
+export const MFL_API_HOST = 'api.myfantasyleague.com';
+
 export interface MflAuth {
   /** Per-league owner key from MFL's Help → Developer's API page. */
   apiKey: string;
@@ -154,13 +161,13 @@ export async function fetchMflLeague(
   if (!rosters?.rosters?.franchise) throw new Error('MFL: no rosters in the response (check the league id, host and season)');
   const standings = await fetchJson(exportUrl(host, season, 'leagueStandings', base), opts).catch(() => null);
   const picks = await fetchJson(exportUrl(host, season, 'futureDraftPicks', base), opts).catch(() => null);
-  const players = { ...(await loadMflPlayers(store, host, season, apiKey, fetchJson)) };
-  await fillMissingPlayers(rosters, players, host, season, apiKey ? { APIKEY: apiKey } : {}, fetchJson);
+  const players = { ...(await loadMflPlayers(store, MFL_API_HOST, season, apiKey, fetchJson)) };
+  await fillMissingPlayers(rosters, players, MFL_API_HOST, season, apiKey ? { APIKEY: apiKey } : {}, fetchJson);
   const data = parseMflLeague(cfg, season, league, rosters, standings, picks, players);
   const global: Record<string, string> = apiKey ? { APIKEY: apiKey } : {};
   data.mfl = await fetchMflExtras({
     url: (type, params = {}) => exportUrl(host, season, type, { ...base, ...params }),
-    globalUrl: (type, params = {}) => exportUrl(host, season, type, { ...global, ...params }),
+    globalUrl: (type, params = {}) => exportUrl(MFL_API_HOST, season, type, { ...global, ...params }),
     players,
     teams: data.teams,
     myTeamId: findMyTeam(data, cfg.myTeam)?.id ?? null,

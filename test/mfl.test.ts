@@ -291,6 +291,22 @@ describe('MFL player names', () => {
     expect(store.data['cache:mfl-players-2026']).toBeUndefined();
   });
 
+  it('sends league-independent requests to api.myfantasyleague.com, league requests to the league host', async () => {
+    const hosts = new Map<string, Set<string>>();
+    await fetchMflLeague(cfg, 2026, auth, memoryStore(), fakeMfl((url) => {
+      const u = new URL(url);
+      const type = u.searchParams.get('TYPE')!;
+      if (!hosts.has(type)) hosts.set(type, new Set());
+      hosts.get(type)!.add(u.host);
+    }));
+    for (const type of ['players', 'injuries', 'topAdds', 'topDrops']) {
+      expect([...hosts.get(type)!]).toEqual(['api.myfantasyleague.com']);
+    }
+    for (const type of ['league', 'rosters', 'leagueStandings', 'futureDraftPicks', 'transactions', 'schedule', 'rules', 'playerScores']) {
+      expect([...hosts.get(type)!]).toEqual(['www42.myfantasyleague.com']);
+    }
+  });
+
   it('ignores a previously cached empty list and refetches', async () => {
     const store = memoryStore({ 'cache:mfl-players-2026': { at: Date.now(), players: {} } });
     const data = await fetchMflLeague(cfg, 2026, auth, store, fakeMfl());
