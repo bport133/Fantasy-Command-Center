@@ -130,7 +130,9 @@ export async function refresh(store: Store, opts: { fetchRemote?: boolean } = {}
         const data = await fetchLeague(cfg, settings, sleeperDb, store);
         leagues.push(data);
         leagueCache[cfg.id] = data;
-        sources.push({ source: data.name, ok: true, message: `${label}: ${data.teams.length} teams` });
+        const rostered = data.teams.reduce((n, t) => n + t.players.length, 0);
+        if (data.teams.length && !rostered) throw new Error(`${data.name}: ${data.teams.length} teams but no rostered players came back`);
+        sources.push({ source: data.name, ok: true, message: `${label}: ${data.teams.length} teams, ${rostered} rostered players` });
       } catch (err) {
         const msg = (err as Error).message;
         errors.set(cfg.id, msg);

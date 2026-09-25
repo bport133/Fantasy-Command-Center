@@ -185,6 +185,24 @@ describe('MFL league view', () => {
   });
 });
 
+
+/** Minimal fake MFL: answers by TYPE with one roster and a 150-player database. */
+function fakeMfl(record: (url: string, init: { headers?: Record<string, string> }) => void = () => {}, opts: { playersResponse?: unknown } = {}) {
+  const db = Array.from({ length: 150 }, (_, i) => ({ id: String(1000 + i), name: `Last${i}, First${i}`, position: 'WR', team: 'KC' }));
+  return (async (url: string, init: { headers?: Record<string, string> } = {}) => {
+    record(url, init);
+    const u = new URL(url);
+    const type = u.searchParams.get('TYPE');
+    if (type === 'players') {
+      if (u.searchParams.get('PLAYERS')) return { players: { player: { id: '9999', name: 'Rookie, New', position: 'RB', team: 'NYJ' } } };
+      return opts.playersResponse ?? { players: { player: db } };
+    }
+    if (type === 'rosters') return { rosters: { franchise: { id: '0001', player: [{ id: '1000', status: 'ROSTER', salary: '1000', contractYear: '2' }, { id: '9999', status: 'ROSTER', salary: '500', contractYear: '1' }] } } };
+    if (type === 'league') return { league: { name: 'PEACE', franchises: { franchise: { id: '0001', name: 'Inch by Inch' } } } };
+    return {};
+  }) as any;
+}
+
 describe('MFL sign-in', () => {
   const reply = (body: string, status = 200) => (async () => new Response(body, { status })) as unknown as typeof fetch;
 
@@ -219,10 +237,7 @@ describe('MFL sign-in', () => {
       2026,
       { apiKey: '', cookie: 'abc=' },
       memoryStore(),
-      (async (_url: string, init: { headers?: Record<string, string> } = {}) => {
-        headers.push(init.headers ?? {});
-        return {};
-      }) as any,
+      fakeMfl((_url, init) => headers.push(init.headers ?? {})),
     );
     expect(headers.length).toBeGreaterThan(10);
     expect(headers.every((h) => h.cookie === 'MFL_USER_ID=abc%3D')).toBe(true);
@@ -236,10 +251,7 @@ describe('MFL sign-in', () => {
       2026,
       { apiKey: '', cookie: '', userAgent: 'TonyDynastyApp' },
       memoryStore(),
-      (async (_url: string, init: { headers?: Record<string, string> } = {}) => {
-        agents.add(init.headers?.['user-agent'] ?? '');
-        return {};
-      }) as any,
+      fakeMfl((_url, init) => agents.add(init.headers?.['user-agent'] ?? '')),
     );
     expect([...agents]).toEqual(['TonyDynastyApp']);
     let sent = '';
@@ -256,5 +268,32 @@ describe('MFL sign-in', () => {
     expect(mergeSettings(s, { clearSecrets: ['mflCookie'] })).toMatchObject({ mflCookie: '', mflUsername: '' });
     expect((publicSettings(s) as any).mflCookie).toBeUndefined();
     expect(publicSettings(s).secretsSet.mflCookie).toBe(true);
+  });
+});
+
+describe('MFL player names', () => {
+  const cfg = { id: 'm', platform: 'mfl' as const, leagueId: '1', myTeam: '0001', host: 'www42.myfantasyleague.com' };
+  const auth = { apiKey: '', cookie: '' };
+
+  it('matches roster players to names, looking up ones missing from the cache', async () => {
+    const store = memoryStore();
+    const data = await fetchMflLeague(cfg, 2026, auth, store, fakeMfl());
+    expect(data.teams[0].players.map((p) => p.name)).toEqual(['First0 Last0', 'New Rookie']);
+    expect(Object.keys((store.data['cache:mfl-players-2026'] as any).players)).toHaveLength(150);
+  });
+
+  it('never caches an empty or refused player list (the "everyone is a free agent" bug)', async () => {
+    const store = memoryStore();
+    await expect(fetchMflLeague(cfg, 2026, auth, store, fakeMfl(undefined, { playersResponse: { error: { $t: 'Unregistered client' } } }))).rejects.toThrow(
+      'MFL players: Unregistered client',
+    );
+    await expect(fetchMflLeague(cfg, 2026, auth, store, fakeMfl(undefined, { playersResponse: { players: {} } }))).rejects.toThrow('empty player list');
+    expect(store.data['cache:mfl-players-2026']).toBeUndefined();
+  });
+
+  it('ignores a previously cached empty list and refetches', async () => {
+    const store = memoryStore({ 'cache:mfl-players-2026': { at: Date.now(), players: {} } });
+    const data = await fetchMflLeague(cfg, 2026, auth, store, fakeMfl());
+    expect(data.teams[0].players[0].name).toBe('First0 Last0');
   });
 });

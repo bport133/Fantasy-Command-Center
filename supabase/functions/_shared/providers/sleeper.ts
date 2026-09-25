@@ -27,17 +27,19 @@ export type PlayerDb = Record<string, SleeperPlayer>;
  */
 export async function loadSleeperPlayers(store: Store, fetchJson = getJson): Promise<PlayerDb> {
   const cached = await store.get<{ at: number; players: PlayerDb } | null>(PLAYER_CACHE, null);
-  if (cached && Date.now() - cached.at < PLAYER_CACHE_MS) return cached.players;
+  const usable = (db?: PlayerDb) => !!db && Object.keys(db).length > 0;
+  if (cached && usable(cached.players) && Date.now() - cached.at < PLAYER_CACHE_MS) return cached.players;
   try {
     const raw = await fetchJson<Record<string, any>>(`${BASE}/players/nfl`, {
       label: 'Sleeper players',
       timeoutMs: 90000,
     });
-    const players = trimPlayerDb(raw);
+    const players = trimPlayerDb(raw ?? {});
+    if (!usable(players)) throw new Error('Sleeper players: empty response');
     await store.set(PLAYER_CACHE, { at: Date.now(), players });
     return players;
   } catch (err) {
-    if (cached) return cached.players; // stale beats nothing
+    if (cached && usable(cached.players)) return cached.players; // stale beats nothing
     throw err;
   }
 }

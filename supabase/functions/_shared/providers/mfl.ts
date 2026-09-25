@@ -26,19 +26,59 @@ interface MflPlayer {
   nfl: string;
 }
 
+function parsePlayers(data: any): Record<string, MflPlayer> {
+  if (data?.error) throw new Error(`MFL players: ${data.error.$t ?? JSON.stringify(data.error)}`);
+  const players: Record<string, MflPlayer> = {};
+  for (const p of asArray<any>(data?.players?.player)) {
+    if (!p?.id) continue;
+    players[String(p.id)] = { name: displayName(p.name ?? ''), pos: p.position === 'Def' ? 'DEF' : p.position, nfl: p.team || 'FA' };
+  }
+  return players;
+}
+
+/**
+ * MFL's player database (id -> name), cached for a day. An empty or error response is never
+ * cached: without names no roster player can be matched and every league would look empty.
+ */
 async function loadMflPlayers(store: Store, host: string, season: number, apiKey: string, fetchJson: typeof getJson) {
   const file = `cache:mfl-players-${season}`;
   const cached = await store.get<{ at: number; players: Record<string, MflPlayer> } | null>(file, null);
-  if (cached && Date.now() - cached.at < PLAYER_CACHE_MS) return cached.players;
+  if (cached && Date.now() - cached.at < PLAYER_CACHE_MS && Object.keys(cached.players).length > 100) return cached.players;
   const params: Record<string, string> = {};
   if (apiKey) params.APIKEY = apiKey;
-  const data = await fetchJson(exportUrl(host, season, 'players', params), { label: 'MFL players', timeoutMs: 60000 });
-  const players: Record<string, MflPlayer> = {};
-  for (const p of asArray<any>(data?.players?.player)) {
-    players[p.id] = { name: displayName(p.name ?? ''), pos: p.position === 'Def' ? 'DEF' : p.position, nfl: p.team || 'FA' };
+  try {
+    const players = parsePlayers(
+      await fetchJson(exportUrl(host, season, 'players', params), { label: 'MFL players', timeoutMs: 60000 }),
+    );
+    if (Object.keys(players).length < 100) throw new Error('MFL players: MFL returned an empty player list');
+    await store.set(file, { at: Date.now(), players });
+    return players;
+  } catch (err) {
+    if (cached && Object.keys(cached.players).length > 100) return cached.players; // stale beats nothing
+    throw err;
   }
-  await store.set(file, { at: Date.now(), players });
-  return players;
+}
+
+/** Looks up rostered ids missing from the cached database (e.g. players added since it was cached). */
+async function fillMissingPlayers(
+  rosters: any,
+  players: Record<string, MflPlayer>,
+  host: string,
+  season: number,
+  params: Record<string, string>,
+  fetchJson: typeof getJson,
+): Promise<void> {
+  const missing = new Set<string>();
+  for (const f of asArray<any>(rosters?.rosters?.franchise)) {
+    for (const p of asArray<any>(f.player)) if (p?.id && !players[String(p.id)]) missing.add(String(p.id));
+  }
+  if (!missing.size) return;
+  const ids = [...missing].slice(0, 300).join(',');
+  try {
+    Object.assign(players, parsePlayers(await fetchJson(exportUrl(host, season, 'players', { ...params, PLAYERS: ids }), { label: 'MFL players' })));
+  } catch {
+    // Unresolved players are listed by id instead (see parseMflLeague).
+  }
 }
 
 export const DEFAULT_MFL_USER_AGENT = 'F2-Command-Center';
@@ -105,16 +145,17 @@ export async function fetchMflLeague(
   const base: Record<string, string> = { L: cfg.leagueId };
   if (apiKey) base.APIKEY = apiKey;
   const opts = { label: 'MFL' };
-  const [league, rosters, standings, picks, players] = await Promise.all([
-    fetchJson(exportUrl(host, season, 'league', base), opts),
-    fetchJson(exportUrl(host, season, 'rosters', base), opts),
-    fetchJson(exportUrl(host, season, 'leagueStandings', base), opts).catch(() => null),
-    fetchJson(exportUrl(host, season, 'futureDraftPicks', base), opts).catch(() => null),
-    loadMflPlayers(store, host, season, apiKey, fetchJson),
-  ]);
+  // One request at a time: MFL throttles bursts from a single caller.
+  const league = await fetchJson(exportUrl(host, season, 'league', base), opts);
+  const rosters = await fetchJson(exportUrl(host, season, 'rosters', base), opts);
   for (const d of [league, rosters]) {
     if (d?.error) throw new Error(`MFL: ${d.error.$t ?? JSON.stringify(d.error)}`);
   }
+  if (!rosters?.rosters?.franchise) throw new Error('MFL: no rosters in the response (check the league id, host and season)');
+  const standings = await fetchJson(exportUrl(host, season, 'leagueStandings', base), opts).catch(() => null);
+  const picks = await fetchJson(exportUrl(host, season, 'futureDraftPicks', base), opts).catch(() => null);
+  const players = { ...(await loadMflPlayers(store, host, season, apiKey, fetchJson)) };
+  await fillMissingPlayers(rosters, players, host, season, apiKey ? { APIKEY: apiKey } : {}, fetchJson);
   const data = parseMflLeague(cfg, season, league, rosters, standings, picks, players);
   const global: Record<string, string> = apiKey ? { APIKEY: apiKey } : {};
   data.mfl = await fetchMflExtras({
@@ -152,8 +193,7 @@ export function parseMflLeague(
   const teams: Team[] = asArray<any>(rosters?.rosters?.franchise).map((f) => {
     const roster: RosterPlayer[] = [];
     for (const rp of asArray<any>(f.player)) {
-      const p = players[rp.id];
-      if (!p) continue;
+      const p = players[rp.id] ?? { name: `MFL player #${rp.id}`, pos: '?', nfl: '?' };
       const slot: Slot =
         rp.status === 'TAXI_SQUAD' ? 'Taxi' : rp.status === 'INJURED_RESERVE' ? 'IR' : 'Active';
       roster.push({
