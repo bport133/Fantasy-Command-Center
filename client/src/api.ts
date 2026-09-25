@@ -23,6 +23,7 @@ export const api = {
   refresh: () => call<Snapshot>('POST', '/refresh'),
   settings: () => call<PublicSettings>('GET', '/settings'),
   saveSettings: (s: Partial<Settings> & { clearSecrets?: SecretKey[] }) => call<PublicSettings>('PUT', '/settings', s),
+  mflLogin: (username: string, password: string) => call<PublicSettings>('POST', '/mfl/login', { username, password }),
   watchlist: () => call<string[]>('GET', '/watchlist'),
   saveWatchlist: (names: string[]) => call<Snapshot>('PUT', '/watchlist', names),
   importCsv: (csv: string) => call<Snapshot>('POST', '/rankings/csv', csv, 'text/csv'),

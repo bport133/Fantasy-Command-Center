@@ -1,6 +1,7 @@
 // HTTP routes for the `api` Edge Function. Platform-agnostic so it can be tested without Deno.
 
 import { parseFantasyProsCsv } from './providers/fantasypros.ts';
+import { mflLogin } from './providers/mfl.ts';
 import { EMPTY_SNAPSHOT, loadWatchlist, refresh, refreshDue, saveRankings, saveWatchlist } from './refresh.ts';
 import { loadSettings, mergeSettings, publicSettings } from './settings.ts';
 import type { Store } from './store.ts';
@@ -48,6 +49,15 @@ export async function handle(req: Request, deps: AppDeps): Promise<Response> {
         const next = mergeSettings(await loadSettings(store), await req.json());
         await store.set('settings', next);
         await refresh(store, { fetchRemote: false });
+        return json(publicSettings(next));
+      }
+      case 'POST /mfl/login': {
+        // The password goes to MFL once and is dropped; only MFL's session cookie is kept.
+        const { username, password } = (await req.json()) ?? {};
+        const settings = await loadSettings(store);
+        const cookie = await mflLogin(settings.season, String(username ?? ''), String(password ?? ''));
+        const next = { ...settings, mflCookie: cookie, mflUsername: String(username).trim() };
+        await store.set('settings', next);
         return json(publicSettings(next));
       }
       case 'GET /watchlist':

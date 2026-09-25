@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS: Settings = {
   espnS2: '',
   espnSwid: '',
   mflApiKey: '',
+  mflCookie: '',
+  mflUsername: '',
   mflSalaryCap: 200000,
   mflContractYearCap: 72,
   projectionYears: 5,
@@ -50,6 +52,9 @@ const NUMERIC: (keyof Settings)[] = [
   'autoRefreshMinutes',
 ];
 
+/** Set only by the server (MFL sign-in), never from a settings form. */
+const SERVER_ONLY: (keyof Settings)[] = ['mflCookie', 'mflUsername'];
+
 /**
  * Apply an update from the browser. Secret fields are only replaced when a non-empty value
  * is sent (the browser never sees them); list a key in `clearSecrets` to blank it.
@@ -60,7 +65,7 @@ export function mergeSettings(
 ): Settings {
   const next: Settings = { ...current };
   for (const [k, v] of Object.entries(patch) as [keyof Settings, unknown][]) {
-    if (!(k in DEFAULT_SETTINGS) || v === undefined) continue;
+    if (!(k in DEFAULT_SETTINGS) || v === undefined || SERVER_ONLY.includes(k)) continue;
     if ((SECRET_KEYS as string[]).includes(k)) {
       if (typeof v === 'string' && v.trim()) (next as any)[k] = v.trim();
     } else if (NUMERIC.includes(k)) {
@@ -81,5 +86,6 @@ export function mergeSettings(
     }
   }
   for (const k of patch.clearSecrets ?? []) if (SECRET_KEYS.includes(k)) next[k] = '';
+  if (!next.mflCookie) next.mflUsername = '';
   return next;
 }

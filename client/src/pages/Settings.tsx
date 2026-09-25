@@ -167,7 +167,15 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
 
       <div className="grid-2">
         <Section title="MFL">
-          {secret('mflApiKey', 'API key', 'Needed for owner-only MFL data (pending trades, calendar). While logged in to MFL, open your league\'s api_info page (e.g. www42.myfantasyleague.com/2026/api_info?L=12345); your key is shown there.')}
+          <MflSignIn
+            settings={draft}
+            onChange={(saved) => setDraft({ ...draft, mflUsername: saved.mflUsername, secretsSet: saved.secretsSet })}
+          />
+          {secret(
+            'mflApiKey',
+            'API key (optional, instead of signing in)',
+            'Log in at myfantasyleague.com, open your league, then Help → Developer\'s API. The key is shown on that page.',
+          )}
           <NumField label="Salary cap" help="Used if MFL doesn't report one" value={draft.mflSalaryCap} onChange={(v) => set('mflSalaryCap', v)} />
           <NumField label="Contract-year cap" help="Total contract years allowed" value={draft.mflContractYearCap} onChange={(v) => set('mflContractYearCap', v)} />
           <NumField label="Projection years" value={draft.projectionYears} onChange={(v) => set('projectionYears', v)} />
@@ -192,6 +200,77 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Signs in to MFL through the server. The password is sent once and never stored; the server
+ * keeps only MFL's login cookie so it can read owner-only data (pending trades, calendar...).
+ */
+function MflSignIn({ settings, onChange }: { settings: Draft; onChange: (s: PublicSettings) => void }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const signIn = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const saved = await api.mflLogin(username, password);
+      onChange(saved);
+      setPassword('');
+      setMsg({ ok: true, text: 'Signed in. Hit Refresh all to load your owner-only MFL data.' });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const signOut = async () => {
+    setBusy(true);
+    try {
+      onChange(await api.saveSettings({ clearSecrets: ['mflCookie'] }));
+      setMsg(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (settings.secretsSet.mflCookie) {
+    return (
+      <Field label="MFL sign-in" help="The app uses this to see owner-only data like your pending trades and the league calendar.">
+        <div className="row">
+          <span className="ok">✓ Signed in{settings.mflUsername ? ` as ${settings.mflUsername}` : ''}</span>
+          <button className="link" onClick={signOut} disabled={busy}>
+            Sign out of MFL
+          </button>
+        </div>
+        {msg && <span className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</span>}
+      </Field>
+    );
+  }
+  return (
+    <Field
+      label="MFL sign-in (recommended)"
+      help="Your MFL username and password. They go to MFL once to sign you in; the password is not saved."
+    >
+      <div className="stack">
+        <input placeholder="MFL username or email" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input
+          type="password"
+          placeholder="MFL password"
+          autoComplete="off"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && signIn()}
+        />
+        <button className="primary" onClick={signIn} disabled={busy || !username || !password}>
+          {busy ? 'Signing in…' : 'Sign in to MFL'}
+        </button>
+        {msg && <span className={msg.ok ? 'ok small' : 'warn small'}>{msg.text}</span>}
+      </div>
+    </Field>
   );
 }
 

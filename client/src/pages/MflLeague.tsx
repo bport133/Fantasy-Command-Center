@@ -77,7 +77,7 @@ export function MflLeaguePage({ snap }: { snap: Snapshot }) {
         </Section>
         <Section title="Pending trades (yours)">
           {v.pendingTrades === null ? (
-            <p className="empty">Needs the MFL API key (Settings) so MFL knows it's you.</p>
+            <p className="empty">Sign in to MFL in Settings so MFL knows it's you.</p>
           ) : (
             <Table
               rows={v.pendingTrades}
@@ -125,7 +125,7 @@ export function MflLeaguePage({ snap }: { snap: Snapshot }) {
         </Section>
         <Section title="League calendar">
           {v.calendar === null ? (
-            <p className="empty">Needs the MFL API key (Settings).</p>
+            <p className="empty">Sign in to MFL in Settings to see this.</p>
           ) : (
             <Table
               rows={v.calendar.filter((e) => !e.end || Date.parse(e.end) >= Date.now() - 86400000)}

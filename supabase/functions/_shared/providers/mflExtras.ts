@@ -49,7 +49,7 @@ export async function fetchMflExtras(opts: {
       const data = await fetchJson(url, label);
       if (data?.error) {
         const msg = text(data.error);
-        unavailable.push(`${section}: ${/owner|login|private|api ?key/i.test(msg) ? 'needs the MFL API key (Settings)' : msg}`);
+        unavailable.push(`${section}: ${/owner|login|private|api ?key/i.test(msg) ? 'needs MFL sign-in or the MFL API key (Settings → MFL)' : msg}`);
         return null;
       }
       return data;

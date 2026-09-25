@@ -21,6 +21,10 @@ export interface Settings {
   espnS2: string;
   espnSwid: string;
   mflApiKey: string;
+  /** MFL login cookie, set by signing in to MFL from Settings (the password is never stored). */
+  mflCookie: string;
+  /** Username the MFL cookie belongs to, shown in Settings. */
+  mflUsername: string;
   mflSalaryCap: number;
   mflContractYearCap: number;
   projectionYears: number;
@@ -35,8 +39,8 @@ export interface Settings {
 
 /** Settings as sent to the browser: secrets are replaced by a flag saying whether they are set. */
 export type PublicSettings = Omit<Settings, SecretKey> & { secretsSet: Record<SecretKey, boolean> };
-export type SecretKey = 'espnS2' | 'espnSwid' | 'mflApiKey' | 'fpApiKey' | 'alertWebhookUrl';
-export const SECRET_KEYS: SecretKey[] = ['espnS2', 'espnSwid', 'mflApiKey', 'fpApiKey', 'alertWebhookUrl'];
+export type SecretKey = 'espnS2' | 'espnSwid' | 'mflApiKey' | 'mflCookie' | 'fpApiKey' | 'alertWebhookUrl';
+export const SECRET_KEYS: SecretKey[] = ['espnS2', 'espnSwid', 'mflApiKey', 'mflCookie', 'fpApiKey', 'alertWebhookUrl'];
 
 export type Slot = 'Starter' | 'Bench' | 'IR' | 'Taxi' | 'Active';
 

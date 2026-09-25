@@ -137,6 +137,17 @@ describe('api function', () => {
     expect(snap.freeAgents[0].watched).toBe(true);
   });
 
+  it('signs in to MFL, keeping the cookie but not the password', async () => {
+    const d = deps();
+    vi.mocked(fetch).mockImplementationOnce(async () => new Response('<status MFL_USER_ID="cookie123">OK</status>'));
+    const res = await call(d, 'POST', '/mfl/login', { username: 'tony', password: 'hunter2' });
+    const pub = await res.json();
+    expect(pub).toMatchObject({ mflUsername: 'tony', secretsSet: { mflCookie: true } });
+    expect(JSON.stringify(pub)).not.toContain('cookie123');
+    expect(JSON.stringify(d.store.data)).not.toContain('hunter2');
+    expect((d.store.data.settings as any).mflCookie).toBe('cookie123');
+  });
+
   it('imports a rankings CSV', async () => {
     const d = deps();
     const csv = 'RK,TIERS,PLAYER NAME,TEAM,POS,AGE\n1,1,Bijan Robinson,ATL,RB1,24\n';

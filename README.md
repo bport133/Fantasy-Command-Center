@@ -71,10 +71,11 @@ Open your site, sign in, and go to **⚙️ Settings**:
    - *Sleeper*: the league id from `sleeper.com/leagues/<id>`.
    - *ESPN*: `leagueId=` from your league URL. Private leagues also need the `espn_s2` and `SWID`
      cookies. To find them, log in at fantasy.espn.com and open DevTools → Application → Cookies.
-   - *MFL*: the league id and host (for example `www42.myfantasyleague.com`). Add your MFL API
-     key too, so the app can see owner-only data like your pending trades and the league
-     calendar. While logged in to MFL, open your league's API page
-     (`https://<host>/<season>/api_info?L=<league id>`); MFL shows your key there.
+   - *MFL*: the league id and host (for example `www42.myfantasyleague.com`). Then use **Sign in to MFL**
+     (Settings → MFL) with your MFL username and password so the app can see owner-only data
+     like your pending trades and the league calendar. The password goes to MFL once and is not
+     saved; the app keeps only MFL's login cookie. (Alternatively paste your league API key from
+     MFL's Help → Developer's API page.)
 2. **FantasyPros.** Paste an API key, or import the rankings CSV from the FantasyPros website.
 3. Click **Save & refresh**. Then pick **My team** for each league from the dropdown and click
    **Save & refresh** again.

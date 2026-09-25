@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { currentWeek, makeContext, mflCap, mflLeagueView, rosterGroups } from '../supabase/functions/_shared/analysis.ts';
 import { normalizeName } from '../supabase/functions/_shared/names.ts';
 import { describeAsset, fetchMflExtras, parseMflExtras } from '../supabase/functions/_shared/providers/mflExtras.ts';
-import { DEFAULT_SETTINGS } from '../supabase/functions/_shared/settings.ts';
+import { DEFAULT_SETTINGS, mergeSettings, publicSettings } from '../supabase/functions/_shared/settings.ts';
+import { fetchMflLeague, mflCookieHeader, mflLogin } from '../supabase/functions/_shared/providers/mfl.ts';
+import { memoryStore } from '../supabase/functions/_shared/store.ts';
 import type { LeagueData, Settings } from '../supabase/functions/_shared/types.ts';
 
 const players = {
@@ -123,7 +125,7 @@ describe('MFL extras fetching', () => {
     });
     expect(x.pendingTrades).toBeNull();
     expect(x.calendar).toBeNull();
-    expect(x.unavailable).toEqual(['Pending trades: needs the MFL API key (Settings)', 'Calendar: MFL: HTTP 500']);
+    expect(x.unavailable).toEqual(['Pending trades: needs MFL sign-in or the MFL API key (Settings → MFL)', 'Calendar: MFL: HTTP 500']);
     expect(x.transactions).toHaveLength(4);
     // league + standings were reused, not fetched again; projections asked only for my roster.
     expect(seen.some((u) => u.endsWith('/league') || u.endsWith('/leagueStandings'))).toBe(false);
@@ -180,5 +182,57 @@ describe('MFL league view', () => {
   it('adds injury and season points to the MFL roster', () => {
     const g = rosterGroups(ctx, [data])[0];
     expect(g.players.find((x) => x.name === 'Nico Collins')).toMatchObject({ injury: 'Questionable – Hamstring', ytdPoints: 54.3 });
+  });
+});
+
+describe('MFL sign-in', () => {
+  const reply = (body: string, status = 200) => (async () => new Response(body, { status })) as unknown as typeof fetch;
+
+  it('returns the MFL_USER_ID cookie from the login response', async () => {
+    const cookie = await mflLogin(2026, 'tony', 'pw', reply('<status MFL_USER_ID="ab+c/d=">OK</status>'));
+    expect(cookie).toBe('ab+c/d=');
+    // Base64 characters are escaped when sent back.
+    expect(mflCookieHeader(cookie)).toEqual({ cookie: 'MFL_USER_ID=ab%2Bc%2Fd%3D' });
+    expect(mflCookieHeader('')).toEqual({});
+  });
+
+  it('reports MFL login errors', async () => {
+    await expect(mflLogin(2026, 'tony', 'bad', reply('<error>Invalid Password</error>'))).rejects.toThrow('MFL login failed: Invalid Password');
+    await expect(mflLogin(2026, '', 'x', reply(''))).rejects.toThrow('Enter your MFL username and password');
+  });
+
+  it('posts the credentials to MFL over HTTPS, not in the URL', async () => {
+    const calls: [string, RequestInit][] = [];
+    await mflLogin(2026, 'tony', 's3cret', (async (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return new Response('<status MFL_USER_ID="x">OK</status>');
+    }) as unknown as typeof fetch);
+    expect(calls[0][0]).toBe('https://api.myfantasyleague.com/2026/login');
+    expect(calls[0][1].method).toBe('POST');
+    expect(String(calls[0][1].body)).toContain('PASSWORD=s3cret');
+  });
+
+  it('sends the cookie on every MFL request', async () => {
+    const headers: Record<string, string>[] = [];
+    await fetchMflLeague(
+      { id: 'm', platform: 'mfl', leagueId: '1', myTeam: '0001', host: 'www42.myfantasyleague.com' },
+      2026,
+      { apiKey: '', cookie: 'abc=' },
+      memoryStore(),
+      (async (_url: string, init: { headers?: Record<string, string> } = {}) => {
+        headers.push(init.headers ?? {});
+        return {};
+      }) as any,
+    );
+    expect(headers.length).toBeGreaterThan(10);
+    expect(headers.every((h) => h.cookie === 'MFL_USER_ID=abc%3D')).toBe(true);
+  });
+
+  it('never lets the browser set the MFL cookie directly', () => {
+    const s = mergeSettings({ ...DEFAULT_SETTINGS, mflCookie: 'real', mflUsername: 'tony' }, { mflCookie: 'forged', mflUsername: 'x' } as any);
+    expect(s).toMatchObject({ mflCookie: 'real', mflUsername: 'tony' });
+    expect(mergeSettings(s, { clearSecrets: ['mflCookie'] })).toMatchObject({ mflCookie: '', mflUsername: '' });
+    expect((publicSettings(s) as any).mflCookie).toBeUndefined();
+    expect(publicSettings(s).secretsSet.mflCookie).toBe(true);
   });
 });
