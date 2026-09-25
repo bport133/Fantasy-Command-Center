@@ -18,6 +18,7 @@ export function MflCapPage({ snap }: { snap: Snapshot }) {
   const capRows = [
     metric('Total Salary Cap', (y) => money(y.cap)),
     metric('Total Committed', (y) => money(y.committed)),
+    metric('…incl. salary adjustments', (y) => (y.adjustments ? money(y.adjustments) : <span className="muted">–</span>)),
     metric('Cap Remaining', (y) => <span className={y.remaining < 0 ? 'neg' : 'pos-num'}>{money(y.remaining)}</span>),
     metric('# Contracts Active', (y) => y.contracts),
     metric('Cap % Used', (y) => <Meter value={y.pctUsed} />),
@@ -54,7 +55,15 @@ export function MflCapPage({ snap }: { snap: Snapshot }) {
 
   return (
     <>
-      <PageHead title="💰 MFL Salary Cap & Contract Projection" sub="Salary counts against a season while contract years remain." />
+      <PageHead
+        title="💰 MFL Salary Cap & Contract Projection"
+        sub={
+          <>
+            Salary counts against a season while contract years remain. This season also includes MFL salary adjustments (details on{' '}
+            <a href="#mfl-league">MFL League</a>).
+          </>
+        }
+      />
       {snap.mflCap.length > 1 && (
         <Chips options={snap.mflCap.map((v) => ({ value: v.configId, label: v.league }))} value={view.configId} onChange={setId} />
       )}

@@ -131,6 +131,8 @@ export function RostersPage({ snap }: { snap: Snapshot }) {
           cols.push(
             { key: 'salary', label: 'Salary', align: 'right', render: (r) => money(r.salary) },
             { key: 'contractYears', label: 'Contract Yrs', align: 'right' },
+            { key: 'ytdPoints', label: 'Pts YTD', align: 'right', render: (r) => (r.ytdPoints === undefined ? fmt(null) : r.ytdPoints.toFixed(1)) },
+            { key: 'injury', label: 'Injury', render: (r) => (r.injury ? <span className="warn">{r.injury}</span> : '') },
           );
         }
         const rows = g.players.filter((p) => pos === 'ALL' || p.pos === pos);

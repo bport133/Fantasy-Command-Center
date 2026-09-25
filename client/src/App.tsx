@@ -4,6 +4,7 @@ import type { Snapshot } from '@shared/types.ts';
 import { api } from './api';
 import { AlertsPage, DraftPicksPage, RankingsPage, TeamValuesPage, TradeFinderPage } from './pages/League';
 import { MflCapPage, MflExpiringPage } from './pages/Mfl';
+import { MflLeaguePage } from './pages/MflLeague';
 import { DashboardPage, FreeAgentsPage, RostersPage, WatchlistPage } from './pages/Overview';
 import { SettingsPage } from './pages/Settings';
 import { configured, supabase } from './supabase';
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'watchlist', icon: '👀', label: 'Watchlist' },
   { id: 'mfl-cap', icon: '💰', label: 'MFL Cap' },
   { id: 'mfl-expiring', icon: '📅', label: 'MFL Expiring' },
+  { id: 'mfl-league', icon: '🏟️', label: 'MFL League' },
   { id: 'team-values', icon: '📊', label: 'Team Values' },
   { id: 'trade-finder', icon: '🤝', label: 'Trade Finder' },
   { id: 'draft-picks', icon: '🎯', label: 'Draft Picks' },
@@ -215,6 +217,8 @@ function Page({ tab, snap, update, refresh }: { tab: TabId; snap: Snapshot; upda
       return <MflCapPage snap={snap} />;
     case 'mfl-expiring':
       return <MflExpiringPage snap={snap} />;
+    case 'mfl-league':
+      return <MflLeaguePage snap={snap} />;
     case 'team-values':
       return <TeamValuesPage snap={snap} />;
     case 'trade-finder':

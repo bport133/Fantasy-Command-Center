@@ -41,6 +41,8 @@ export const SECRET_KEYS: SecretKey[] = ['espnS2', 'espnSwid', 'mflApiKey', 'fpA
 export type Slot = 'Starter' | 'Bench' | 'IR' | 'Taxi' | 'Active';
 
 export interface RosterPlayer {
+  /** The platform's own player id. */
+  id?: string;
   name: string;
   key: string;
   pos: string;
@@ -76,6 +78,70 @@ export interface LeagueData {
   /** null when the platform does not expose future picks. */
   picks: DraftPick[] | null;
   salaryCap?: number;
+  /** MFL-only league detail. */
+  mfl?: MflExtras;
+}
+
+// ---- MFL league detail (names already resolved from MFL ids) ----
+
+/** null = MFL refused it (usually needs the MFL API key) or the request failed. */
+export interface MflExtras {
+  settings: MflSettings;
+  scoring: { positions: string; rule: string; points: string; range?: string }[];
+  standings: { teamId: string; w: number; l: number; t: number; pf: number; pa: number }[];
+  schedule: MflMatchup[];
+  transactions: MflTransaction[] | null;
+  tradeBait: { teamId: string; offering: string[]; wants: string; when?: string }[] | null;
+  pendingTrades: { fromTeamId: string; toTeamId: string; gives: string[]; gets: string[]; comments: string; expires?: string }[] | null;
+  salaryAdjustments: { teamId: string; amount: number; description: string; when?: string }[] | null;
+  calendar: { title: string; start?: string; end?: string }[] | null;
+  /** Keyed by the MFL player id. */
+  injuries: Record<string, { status: string; details: string }>;
+  ytdPoints: Record<string, number>;
+  projections: Record<string, number>;
+  projectionWeek?: number;
+  trending: { adds: MflTrend[]; drops: MflTrend[] };
+  /** Sections MFL refused or that failed, with the reason, e.g. "Pending trades: needs the MFL API key". */
+  unavailable: string[];
+}
+
+export interface MflSettings {
+  rosterSize?: number;
+  irSize?: number;
+  taxiSize?: number;
+  startWeek?: number;
+  endWeek?: number;
+  lastRegularWeek?: number;
+  starters: { pos: string; limit: string }[];
+  startersCount?: number;
+  divisions: { id: string; name: string; teamIds: string[] }[];
+}
+
+export interface MflMatchup {
+  week: number;
+  teams: { teamId: string; score?: number; result?: string; home: boolean }[];
+}
+
+export interface MflTransaction {
+  when: string;
+  type: string;
+  teamId: string;
+  otherTeamId?: string;
+  added: string[];
+  dropped: string[];
+  /** Trades: what teamId gave and received. */
+  gave: string[];
+  got: string[];
+  amount?: number;
+  comments?: string;
+}
+
+export interface MflTrend {
+  id: string;
+  name: string;
+  pos: string;
+  nfl: string;
+  percent: number;
 }
 
 export interface FPPlayer {
@@ -99,6 +165,8 @@ export interface PlayerInfo {
 // ---- Computed views ----
 
 export interface EnrichedPlayer extends RosterPlayer {
+  injury?: string;
+  ytdPoints?: number;
   age?: number;
   yearsExp?: number;
   rank?: number;
@@ -177,7 +245,9 @@ export interface PicksLeague {
 export interface CapYear {
   season: number;
   cap: number;
+  /** Player salaries plus salary adjustments (adjustments only count this season). */
   committed: number;
+  adjustments: number;
   remaining: number;
   contracts: number;
   pctUsed: number;
@@ -248,6 +318,37 @@ export interface MflExpiringView {
   capRoom: CapRoomRow[];
 }
 
+export interface MflLeagueView {
+  configId: string;
+  league: string;
+  myTeam: string | null;
+  currentWeek: number | null;
+  settings: MflSettings;
+  scoring: MflExtras['scoring'];
+  standings: { rank: number; team: string; record: string; pf: number; pa: number; division?: string; mine: boolean }[];
+  matchup: {
+    week: number;
+    opponent: string;
+    myScore?: number;
+    oppScore?: number;
+    result?: string;
+  } | null;
+  /** Your roster with this week's MFL projection, best first. */
+  projections: { name: string; pos: string; nfl: string; slot: string; projected?: number; injury?: string }[];
+  projectionWeek?: number;
+  mySchedule: { week: number; opponent: string; myScore?: number; oppScore?: number; result?: string }[];
+  transactions: { when: string; type: string; team: string; summary: string; mine: boolean }[] | null;
+  tradeBait: { team: string; offering: string[]; wants: string; mine: boolean }[] | null;
+  pendingTrades: { from: string; to: string; gives: string[]; gets: string[]; comments: string; expires?: string }[] | null;
+  salaryAdjustments: { team: string; amount: number; description: string; when?: string; mine: boolean }[] | null;
+  calendar: MflExtras['calendar'];
+  trending: {
+    adds: (MflTrend & { available: boolean; rank?: number })[];
+    drops: (MflTrend & { available: boolean; rank?: number; owner?: string })[];
+  };
+  unavailable: string[];
+}
+
 export interface WatchRow {
   name: string;
   pos?: string;
@@ -294,6 +395,7 @@ export interface Snapshot {
   picks: PicksLeague[];
   mflCap: MflCapView[];
   mflExpiring: MflExpiringView[];
+  mflLeague: MflLeagueView[];
   watchlist: WatchRow[];
   alerts: Alert[];
   rankings: (FPPlayer & { value: number })[];

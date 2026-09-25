@@ -14,6 +14,7 @@ database and hourly refresh run on **Supabase**. There's nothing to install.
 | 🆓 Free Agents | The best FantasyPros-ranked players not rostered in each league. Star a player to watch him |
 | 👀 Watchlist | Who holds each watched player in every league, or whether he's a free agent |
 | 💰 MFL Cap | 5-year salary-cap and contract-year projection, cap allocation by position, and every contract by season |
+| 🏟️ MFL League | This week's matchup and projections, standings, 30-day transactions feed, trade bait, your pending trades, salary adjustments, league calendar, MFL-wide trending adds/drops, roster rules and scoring |
 | 📅 MFL Expiring | League-wide contracts ending after this season or next, plus each team's cap room next season |
 | 📊 Team Values | Dynasty power rankings: total value and QB/RB/WR/TE value for every team |
 | 🤝 Trade Finder | Teams whose surplus position matches your need and vice versa, with targets and offers |
@@ -70,7 +71,10 @@ Open your site, sign in, and go to **⚙️ Settings**:
    - *Sleeper*: the league id from `sleeper.com/leagues/<id>`.
    - *ESPN*: `leagueId=` from your league URL. Private leagues also need the `espn_s2` and `SWID`
      cookies. To find them, log in at fantasy.espn.com and open DevTools → Application → Cookies.
-   - *MFL*: the league id and host (for example `www42.myfantasyleague.com`).
+   - *MFL*: the league id and host (for example `www42.myfantasyleague.com`). Add your MFL API
+     key too, so the app can see owner-only data like your pending trades and the league
+     calendar. While logged in to MFL, open your league's API page
+     (`https://<host>/<season>/api_info?L=<league id>`); MFL shows your key there.
 2. **FantasyPros.** Paste an API key, or import the rankings CSV from the FantasyPros website.
 3. Click **Save & refresh**. Then pick **My team** for each league from the dropdown and click
    **Save & refresh** again.

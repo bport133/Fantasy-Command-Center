@@ -167,7 +167,7 @@ export function SettingsPage({ snap, update, refresh }: { snap: Snapshot; update
 
       <div className="grid-2">
         <Section title="MFL">
-          {secret('mflApiKey', 'API key', 'Only if MFL data comes back blank or errors. Find it under Help → Developer API on your league site.')}
+          {secret('mflApiKey', 'API key', 'Needed for owner-only MFL data (pending trades, calendar). While logged in to MFL, open your league\'s api_info page (e.g. www42.myfantasyleague.com/2026/api_info?L=12345); your key is shown there.')}
           <NumField label="Salary cap" help="Used if MFL doesn't report one" value={draft.mflSalaryCap} onChange={(v) => set('mflSalaryCap', v)} />
           <NumField label="Contract-year cap" help="Total contract years allowed" value={draft.mflContractYearCap} onChange={(v) => set('mflContractYearCap', v)} />
           <NumField label="Projection years" value={draft.projectionYears} onChange={(v) => set('projectionYears', v)} />

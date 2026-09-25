@@ -4,6 +4,8 @@ import type { DraftPick, LeagueConfig, LeagueData, RosterPlayer, Slot, Team } fr
 import { asArray, getJson } from '../http.ts';
 import { displayName, normalizeName } from '../names.ts';
 import type { Store } from '../store.ts';
+import { findMyTeam } from '../analysis.ts';
+import { fetchMflExtras } from './mflExtras.ts';
 
 const PLAYER_CACHE_MS = 24 * 60 * 60 * 1000;
 
@@ -60,7 +62,19 @@ export async function fetchMflLeague(
   for (const d of [league, rosters]) {
     if (d?.error) throw new Error(`MFL: ${d.error.$t ?? JSON.stringify(d.error)}`);
   }
-  return parseMflLeague(cfg, season, league, rosters, standings, picks, players);
+  const data = parseMflLeague(cfg, season, league, rosters, standings, picks, players);
+  const global: Record<string, string> = apiKey ? { APIKEY: apiKey } : {};
+  data.mfl = await fetchMflExtras({
+    url: (type, params = {}) => exportUrl(host, season, type, { ...base, ...params }),
+    globalUrl: (type, params = {}) => exportUrl(host, season, type, { ...global, ...params }),
+    players,
+    teams: data.teams,
+    myTeamId: findMyTeam(data, cfg.myTeam)?.id ?? null,
+    league,
+    standings: standings?.error ? null : standings,
+    fetchJson,
+  });
+  return data;
 }
 
 export function parseMflLeague(
@@ -90,6 +104,7 @@ export function parseMflLeague(
       const slot: Slot =
         rp.status === 'TAXI_SQUAD' ? 'Taxi' : rp.status === 'INJURED_RESERVE' ? 'IR' : 'Active';
       roster.push({
+        id: String(rp.id),
         name: p.name,
         key: normalizeName(p.name),
         pos: p.pos,

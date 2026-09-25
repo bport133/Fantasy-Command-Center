@@ -14,6 +14,8 @@ import {
   type LeagueData,
   type LeagueSummary,
   type MflCapView,
+  type MflLeagueView,
+  type MflTransaction,
   type MflExpiringView,
   type PicksLeague,
   type PlayerInfo,
@@ -93,7 +95,15 @@ export function rosterGroups(ctx: Context, leagues: LeagueData[]): RosterGroup[]
       league: league.name,
       team: mine.name,
       hasContracts: league.platform === 'mfl',
-      players: mine.players.map((p) => enrich(ctx, p)).sort(byValue),
+      players: mine.players
+        .map((p) => {
+          const e = enrich(ctx, p);
+          const inj = p.id ? league.mfl?.injuries[p.id] : undefined;
+          if (inj) e.injury = [inj.status, inj.details].filter(Boolean).join(' – ');
+          if (p.id && league.mfl?.ytdPoints[p.id] !== undefined) e.ytdPoints = league.mfl.ytdPoints[p.id];
+          return e;
+        })
+        .sort(byValue),
     });
   }
   return out;
@@ -346,18 +356,24 @@ export function mflCap(ctx: Context, league: LeagueData): MflCapView | null {
         a.name.localeCompare(b.name),
     );
 
+  // MFL salary adjustments (cut penalties, dead cap, traded cap) apply to the current season only.
+  const adjustments = (league.mfl?.salaryAdjustments ?? [])
+    .filter((a) => a.teamId === mine.id)
+    .reduce((sum, a) => sum + a.amount, 0);
   const years: CapYear[] = seasons.map((season, i) => {
     const active = contracts.filter((c) => c.bySeason[i] !== null);
-    const committed = active.reduce((s, c) => s + c.salary, 0);
+    const adj = i === 0 ? adjustments : 0;
+    const committed = active.reduce((s, c) => s + c.salary, 0) + adj;
     const yearsCommitted = contracts.reduce((s, c) => s + c.yearsBySeason[i], 0);
     return {
       season,
       cap,
       committed,
+      adjustments: adj,
       remaining: cap - committed,
       contracts: active.length,
       pctUsed: cap ? committed / cap : 0,
-      avgSalary: active.length ? Math.round(committed / active.length) : 0,
+      avgSalary: active.length ? Math.round((committed - adj) / active.length) : 0,
       yearsCap,
       yearsCommitted,
       yearsRemaining: yearsCap - yearsCommitted,
@@ -417,6 +433,138 @@ export function mflExpiring(ctx: Context, league: LeagueData): MflExpiringView {
   );
   capRoom.sort((a, b) => b.room - a.room);
   return { configId: league.configId, league: league.name, nextSeason: league.season + 1, expiring, capRoom };
+}
+
+// ---------- MFL league page ----------
+
+const TX_LABEL: Record<string, string> = {
+  TRADE: 'Trade',
+  FREE_AGENT: 'Free agent',
+  WAIVER: 'Waiver',
+  BBID_WAIVER: 'Blind bid',
+  AUCTION_WON: 'Auction',
+};
+
+const list = (xs: string[]) => (xs.length ? xs.join(', ') : 'nothing');
+const dollars = (n: number | undefined) => (n === undefined ? '' : ` for $${n.toLocaleString()}`);
+
+export function describeTransaction(t: MflTransaction, teamName: (id: string) => string): string {
+  switch (t.type) {
+    case 'TRADE':
+      return `Traded ${list(t.gave)} to ${teamName(t.otherTeamId ?? '')} for ${list(t.got)}`;
+    case 'AUCTION_WON':
+      return `Won ${list(t.added)} at auction${dollars(t.amount)}`;
+    case 'BBID_WAIVER':
+      return `Won ${list(t.added)} on waivers${dollars(t.amount)}${t.dropped.length ? `; dropped ${list(t.dropped)}` : ''}`;
+    default: {
+      const parts = [];
+      if (t.added.length) parts.push(`Added ${list(t.added)}`);
+      if (t.dropped.length) parts.push(`dropped ${list(t.dropped)}`);
+      return parts.join('; ') || 'Roster move';
+    }
+  }
+}
+
+/** The first week whose matchups have no results yet (the week being played or next up). */
+export function currentWeek(schedule: { week: number; teams: { result?: string; score?: number }[] }[]): number | null {
+  const weeks = [...new Set(schedule.map((m) => m.week))].sort((a, b) => a - b);
+  if (!weeks.length) return null;
+  const open = weeks.find((w) => schedule.filter((m) => m.week === w).some((m) => m.teams.some((t) => !t.result)));
+  return open ?? weeks[weeks.length - 1];
+}
+
+export function mflLeagueView(ctx: Context, league: LeagueData): MflLeagueView | null {
+  const x = league.mfl;
+  if (!x) return null;
+  const cfg = ctx.settings.leagues.find((l) => l.id === league.configId);
+  const mine = cfg ? findMyTeam(league, cfg.myTeam) : null;
+  const names = new Map(league.teams.map((t) => [t.id, t.name]));
+  const teamName = (id: string) => names.get(id) ?? (id ? `Franchise ${id}` : '?');
+  const divisionOf = new Map(x.settings.divisions.flatMap((d) => d.teamIds.map((id) => [id, d.name] as const)));
+  const week = currentWeek(x.schedule);
+
+  const standings = [...x.standings]
+    .sort((a, b) => b.w + b.t / 2 - (a.w + a.t / 2) || b.pf - a.pf)
+    .map((r, i) => ({
+      rank: i + 1,
+      team: teamName(r.teamId),
+      record: `${r.w}-${r.l}${r.t ? `-${r.t}` : ''}`,
+      pf: r.pf,
+      pa: r.pa,
+      division: divisionOf.get(r.teamId),
+      mine: r.teamId === mine?.id,
+    }));
+
+  const myGames = mine
+    ? x.schedule
+        .filter((m) => m.teams.some((t) => t.teamId === mine.id))
+        .map((m) => {
+          const me = m.teams.find((t) => t.teamId === mine.id)!;
+          const opp = m.teams.find((t) => t.teamId !== mine.id);
+          return {
+            week: m.week,
+            opponent: opp ? teamName(opp.teamId) : 'Bye',
+            myScore: me.score,
+            oppScore: opp?.score,
+            result: me.result,
+          };
+        })
+        .sort((a, b) => a.week - b.week)
+    : [];
+  const thisWeek = myGames.find((g) => g.week === week) ?? null;
+
+  const injury = (id?: string) => {
+    const i = id ? x.injuries[id] : undefined;
+    return i ? [i.status, i.details].filter(Boolean).join(' – ') : undefined;
+  };
+  const projections = (mine?.players ?? [])
+    .map((p) => ({ name: p.name, pos: p.pos, nfl: p.nfl, slot: p.slot, projected: p.id ? x.projections[p.id] : undefined, injury: injury(p.id) }))
+    .sort((a, b) => (b.projected ?? -1) - (a.projected ?? -1) || a.name.localeCompare(b.name));
+
+  const rostered = new Map<string, string>();
+  for (const t of league.teams) for (const p of t.players) if (p.id) rostered.set(p.id, t.name);
+  const rankOf = (name: string) => ctx.fp.get(normalizeName(name))?.rank;
+
+  return {
+    configId: league.configId,
+    league: league.name,
+    myTeam: mine?.name ?? null,
+    currentWeek: week,
+    settings: x.settings,
+    scoring: x.scoring,
+    standings,
+    matchup: thisWeek && week !== null ? { ...thisWeek, week } : null,
+    projections,
+    projectionWeek: x.projectionWeek,
+    mySchedule: myGames,
+    transactions:
+      x.transactions?.map((t) => ({
+        when: t.when,
+        type: TX_LABEL[t.type] ?? t.type,
+        team: teamName(t.teamId),
+        summary: describeTransaction(t, teamName),
+        mine: !!mine && (t.teamId === mine.id || t.otherTeamId === mine.id),
+      })) ?? null,
+    tradeBait:
+      x.tradeBait?.map((b) => ({ team: teamName(b.teamId), offering: b.offering, wants: b.wants, mine: b.teamId === mine?.id })) ?? null,
+    pendingTrades:
+      x.pendingTrades?.map((t) => ({
+        from: teamName(t.fromTeamId),
+        to: teamName(t.toTeamId),
+        gives: t.gives,
+        gets: t.gets,
+        comments: t.comments,
+        expires: t.expires,
+      })) ?? null,
+    salaryAdjustments:
+      x.salaryAdjustments?.map((a) => ({ team: teamName(a.teamId), amount: a.amount, description: a.description, when: a.when, mine: a.teamId === mine?.id })) ?? null,
+    calendar: x.calendar,
+    trending: {
+      adds: x.trending.adds.map((t) => ({ ...t, available: !rostered.has(t.id), rank: rankOf(t.name) })),
+      drops: x.trending.drops.map((t) => ({ ...t, available: !rostered.has(t.id), rank: rankOf(t.name), owner: rostered.get(t.id) })),
+    },
+    unavailable: x.unavailable,
+  };
 }
 
 // ---------- Drop alerts ----------
