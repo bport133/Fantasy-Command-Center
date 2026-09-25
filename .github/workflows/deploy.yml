@@ -36,7 +36,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.check.outputs.ready }}
-      anon_key: ${{ steps.keys.outputs.anon_key }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -92,6 +91,27 @@ jobs:
           if [ -z "$key" ] || [ "$key" = "null" ]; then echo "::error::Could not read the anon key"; exit 1; fi
           echo "anon_key=$key" >> "$GITHUB_OUTPUT"
 
+      # The site is built in this job because GitHub blanks job-to-job outputs that look like
+      # they could hold a secret, which would drop the key before a separate build job saw it.
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build site
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then echo "::error::Supabase public key is empty; not publishing a site that can't connect"; exit 1; fi
+          npm ci
+          npm run build
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ steps.keys.outputs.anon_key }}
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.check.outputs.ready == 'true'
+        with:
+          path: dist
+
   pages:
     needs: supabase
     if: needs.supabase.outputs.ready == 'true'
@@ -103,20 +123,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Build site
-        run: npm run build
-        env:
-          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co
-          VITE_SUPABASE_ANON_KEY: ${{ needs.supabase.outputs.anon_key }}
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
       - id: deploy
         uses: actions/deploy-pages@v4
